@@ -19,20 +19,46 @@
 
 ## 目录说明
 
-- `manifest.json`：Chrome 扩展配置。
-- `popup.html` / `popup.js`：扩展弹窗入口。
-- `content-x.js`：X Article 与 X 推文页面采集脚本。
-- `content-binance.js`：币安广场文章草稿、短帖输入框填充与插图助手。
-- `formatter.html` / `formatter.js` / `styles.css`：本地排版器网页。
-- `demo-checkout.js`：内置示例文章。
+- `extension/`：Chrome 扩展源码。开发者模式加载这个文件夹。
+- `docs/images/`：README 使用的说明截图。
+- `scripts/build-release.sh`：生成可分发 zip 安装包。
+- `dist/`：本地构建输出目录，不提交到仓库。
 
 ## 安装扩展
+
+### 普通用户：下载 Release 安装包
+
+1. 打开右侧 **Releases**，下载最新的 `binance-square-workflow-v*.zip`。
+2. 解压 zip 到本地文件夹。
+3. Chrome 打开 `chrome://extensions`。
+4. 开启“开发者模式”。
+5. 点击“加载已解压的扩展程序”。
+6. 选择刚刚解压出来的文件夹。
+7. 如更新了版本，请在扩展管理页点击“重新加载”，并刷新已打开的 X 和币安广场页面。
+
+### 开发者：从源码加载
 
 1. Chrome 打开 `chrome://extensions`。
 2. 开启“开发者模式”。
 3. 点击“加载已解压的扩展程序”。
-4. 选择本项目文件夹。
+4. 选择本项目的 `extension/` 文件夹。
 5. 如更新了代码，请在扩展管理页点击“重新加载”，并刷新已打开的 X 和币安广场页面。
+
+## 构建与发布
+
+本项目的 zip 安装包适合放在 GitHub Releases。Packages 更适合 npm 包、Docker 镜像等包管理场景，不适合这个 Chrome 扩展 zip。
+
+本地构建：
+
+```bash
+./scripts/build-release.sh
+```
+
+脚本会读取 `extension/manifest.json` 里的版本号，并生成：
+
+```text
+dist/binance-square-workflow-v版本号.zip
+```
 
 ## 推荐使用流程
 
@@ -134,7 +160,7 @@
 
 ## 不安装扩展时的网页模式
 
-可以直接打开 `formatter.html`：
+可以直接打开 `extension/formatter.html`：
 
 1. 从 X Article 复制正文。
 2. 粘贴到正文编辑区。
@@ -151,7 +177,7 @@ python3 -m http.server 8765
 然后访问：
 
 ```text
-http://127.0.0.1:8765/formatter.html
+http://127.0.0.1:8765/extension/formatter.html
 ```
 
 ## 注意事项
