@@ -342,6 +342,18 @@ function separateMediaFromPlaceholder(placeholder, media) {
   if (movable.parentElement === placeholder) placeholder.before(movable);
 }
 
+function moveMediaBeforePlaceholder(editor, placeholder, media) {
+  if (!editor || !placeholder?.isConnected || !media?.isConnected) return false;
+  const containingPlaceholder = allPlaceholders(editor).find((candidate) => candidate.contains(media));
+  if (containingPlaceholder) separateMediaFromPlaceholder(containingPlaceholder, media);
+  let movable = media;
+  while (movable.parentElement && movable.parentElement !== editor) movable = movable.parentElement;
+  if (movable.parentElement !== editor) return false;
+  placeholder.before(movable);
+  dispatchInput(editor, "insertFromPaste");
+  return true;
+}
+
 function mediaKey(element) {
   const image = element.matches("img") ? element : element.querySelector("img");
   const source = image?.currentSrc || image?.src || element.getAttribute("data-src") || element.getAttribute("data-image") || "";
@@ -509,18 +521,13 @@ async function attemptPasteImage(editor, placeholder, blob, dataUrl, index, sour
 }
 
 async function insertHtmlImage(editor, placeholder, dataUrl, index) {
-  setCaretBefore(placeholder);
-  const html = `<img src="${dataUrl}" alt="正文图片 ${index + 1}">`;
-  let commandWorked = false;
-  try {
-    commandWorked = document.execCommand("insertHTML", false, html);
-  } catch {}
-  if (!commandWorked) {
-    const wrapper = document.createElement("span");
-    wrapper.innerHTML = html;
-    placeholder.before(...wrapper.childNodes);
-  }
+  const freshPlaceholder = findPlaceholder(editor, index + 1) || placeholder;
+  const image = document.createElement("img");
+  image.src = dataUrl;
+  image.alt = `正文图片 ${index + 1}`;
+  freshPlaceholder.before(image);
   dispatchInput(editor, "insertFromPaste");
+  return image;
 }
 
 async function insertAssistantImageAtPlaceholder(index) {
@@ -538,20 +545,32 @@ async function insertAssistantImageAtPlaceholder(index) {
 
   await attemptPasteImage(editor, placeholder, blob, dataUrl, index, sourceUrl);
   await sleep(950);
-  let verified = newMediaNearPlaceholder(editor, snapshot, placeholder);
+  let freshPlaceholder = findPlaceholder(editor, index + 1) || placeholder;
+  let verified = newMediaNearPlaceholder(editor, snapshot, freshPlaceholder);
   if (verified.nearby.length) {
-    separateMediaFromPlaceholder(placeholder, verified.nearby[0]);
+    separateMediaFromPlaceholder(freshPlaceholder, verified.nearby[0]);
     return { ok: true, index, method: "paste", media: verified.nearby[0] };
   }
   if (verified.addedMedia.length) {
-    return { ok: false, index, method: "paste", message: `正文图片 ${index + 1} 已新增，但位置不在占位符附近，请人工检查。` };
+    const misplaced = verified.addedMedia[verified.addedMedia.length - 1];
+    if (moveMediaBeforePlaceholder(editor, freshPlaceholder, misplaced)) {
+      await sleep(250);
+      freshPlaceholder = findPlaceholder(editor, index + 1) || freshPlaceholder;
+      verified = newMediaNearPlaceholder(editor, snapshot, freshPlaceholder);
+      if (verified.nearby.length) {
+        separateMediaFromPlaceholder(freshPlaceholder, verified.nearby[0]);
+        return { ok: true, index, method: "paste-corrected", media: verified.nearby[0] };
+      }
+    }
+    return { ok: false, index, method: "paste", message: `正文图片 ${index + 1} 已新增但自动纠偏失败，请人工移动到对应占位符前。` };
   }
 
-  await insertHtmlImage(editor, placeholder, dataUrl, index);
+  await insertHtmlImage(editor, freshPlaceholder, dataUrl, index);
   await sleep(250);
-  verified = newMediaNearPlaceholder(editor, snapshot, placeholder);
+  freshPlaceholder = findPlaceholder(editor, index + 1) || freshPlaceholder;
+  verified = newMediaNearPlaceholder(editor, snapshot, freshPlaceholder);
   if (verified.nearby.length) {
-    separateMediaFromPlaceholder(placeholder, verified.nearby[0]);
+    separateMediaFromPlaceholder(freshPlaceholder, verified.nearby[0]);
     return { ok: true, index, method: "rich-html", media: verified.nearby[0] };
   }
   return { ok: false, index, method: "rich-html", message: `正文图片 ${index + 1} 自动插入失败，请使用单张复制或手动上传。` };
@@ -649,7 +668,16 @@ function markVerifiedPlaceholders() {
 
 function resultText(result) {
   if (!result) return "尚未自动插入或验证。";
-  if (result.ok) return `已插入，方式：${result.method === "paste" ? "粘贴事件" : "富文本兜底"}。`;
+  if (result.ok) {
+    const method = result.method === "paste"
+      ? "粘贴事件"
+      : result.method === "paste-corrected"
+        ? "粘贴后自动纠偏"
+        : result.method === "manual-verify"
+          ? "人工验证"
+          : "指定位置富文本兜底";
+    return `已插入，方式：${method}。`;
+  }
   return result.message || "插入失败。";
 }
 

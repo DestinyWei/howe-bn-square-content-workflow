@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "币安广场文章排版工具",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "采集 X Article，转换为币安广场文章草稿，并辅助批量插入配图。",
   "permissions": ["activeTab", "storage", "downloads", "clipboardRead", "clipboardWrite"],
   "host_permissions": [
