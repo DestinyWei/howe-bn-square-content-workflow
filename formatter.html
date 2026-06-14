@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>币安广场文章排版工具</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">币安广场文章排版工具</div>
+      <h1>X Article → 币安广场排版器</h1>
+      <p>结构转换、兼容性检查、富文本复制与草稿填充。不自动发布。</p>
+      <p class="author-line">
+        作者：Howe ·
+        X/Twitter：<a href="https://x.com/0xcryptoHowe" target="_blank" rel="noreferrer">@0xcryptoHowe</a> ·
+        Telegram 频道：<a href="https://t.me/cryptohowe_treasure" target="_blank" rel="noreferrer">cryptohowe_treasure</a> ·
+        Telegram 群组：<a href="https://t.me/cyrptohowe_discussion" target="_blank" rel="noreferrer">cyrptohowe_discussion</a>
+      </p>
+    </div>
+    <div class="top-actions">
+      <button class="secondary" id="load-demo">载入 Checkout 示例</button>
+      <button class="secondary" id="import-json">导入 JSON</button>
+      <input id="json-file" type="file" accept=".json,application/json" hidden>
+      <button class="primary" id="save-extension">保存给扩展</button>
+      <span id="save-state" aria-live="polite"></span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel controls">
+      <section>
+        <h2>文章信息</h2>
+        <label>来源链接<input id="source-url" placeholder="https://x.com/.../status/..."></label>
+        <label>标题<textarea id="title" rows="3" placeholder="文章标题"></textarea></label>
+        <label>封面 URL<input id="cover" placeholder="推荐 5:2"></label>
+      </section>
+
+      <section>
+        <h2>采集与导入</h2>
+        <button class="wide" id="read-clipboard">读取剪贴板富文本</button>
+        <p class="help">在 X Article 中复制正文后点击。若浏览器禁止读取，也可以直接粘贴到中间编辑区。</p>
+      </section>
+
+      <section>
+        <h2>转换选项</h2>
+        <label class="check"><input id="normalize-headings" type="checkbox" checked> 所有小标题统一为 H2</label>
+        <label class="check"><input id="strip-x-links" type="checkbox" checked> 移除 X / Twitter 链接及 @handle</label>
+        <label class="check"><input id="image-placeholders" type="checkbox" checked> 图片改为上传占位提示</label>
+        <button class="wide" id="normalize">应用币安兼容转换</button>
+      </section>
+
+      <section>
+        <h2>导出</h2>
+        <button class="wide primary" id="copy-rich">复制币安富文本</button>
+        <button class="wide" id="copy-title">复制标题</button>
+        <button class="wide" id="export-json">导出工作流 JSON</button>
+        <button class="wide" id="export-assets">导出图片素材清单</button>
+      </section>
+      <div id="toast">准备就绪</div>
+    </aside>
+
+    <section class="panel editor-panel">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">EDIT</div>
+          <h2>正文编辑区</h2>
+        </div>
+        <span id="word-count">0 字符</span>
+      </div>
+      <div class="paste-note">可以直接粘贴富文本。图片会在转换时记录为素材并替换成顺序占位提示。</div>
+      <article id="editor" contenteditable="true" spellcheck="false" data-placeholder="在这里粘贴 X Article 正文…"></article>
+    </section>
+
+    <aside class="panel audit-panel">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">CHECK</div>
+          <h2>兼容性检查</h2>
+        </div>
+        <button class="small" id="run-check">重新检查</button>
+      </div>
+      <div id="score" class="score">尚未检查</div>
+      <ul id="issues" class="issues"></ul>
+      <h2>图片素材</h2>
+      <ol id="assets" class="assets"></ol>
+    </aside>
+  </main>
+  <script src="demo-checkout.js"></script>
+  <script src="formatter.js"></script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "币安广场文章排版工具",
+  "version": "0.6.0",
+  "description": "采集 X Article，转换为币安广场文章草稿，并辅助批量插入配图。",
+  "permissions": ["activeTab", "storage", "downloads", "clipboardRead", "clipboardWrite"],
+  "host_permissions": [
+    "https://x.com/*",
+    "https://twitter.com/*",
+    "https://pbs.twimg.com/*",
+    "https://*.twimg.com/*",
+    "https://www.binance.com/*",
+    "https://binance.com/*"
+  ],
+  "action": {
+    "default_title": "币安广场文章排版工具",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["content-x.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.binance.com/*", "https://binance.com/*"],
+      "js": ["content-binance.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
