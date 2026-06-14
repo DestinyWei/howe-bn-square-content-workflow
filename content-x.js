@@ -265,6 +265,10 @@ function extractTweet() {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "PING_X_CONTENT") {
+    sendResponse({ ok: true });
+    return;
+  }
   if (message?.type === "EXTRACT_X_TWEET") {
     try {
       sendResponse({ ok: true, tweet: extractTweet() });

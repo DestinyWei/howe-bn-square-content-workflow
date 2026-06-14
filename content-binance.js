@@ -87,6 +87,47 @@ function setTextControl(element, value) {
   dispatchInput(element, "insertText");
 }
 
+function editablePlainText(element) {
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) return element.value || "";
+  return element.innerText || element.textContent || "";
+}
+
+function selectEditableContents(element) {
+  element.focus();
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function insertPlainTextEditable(element, value) {
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+    setTextControl(element, value);
+    return;
+  }
+  selectEditableContents(element);
+  try {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/plain", value);
+    element.dispatchEvent(new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData
+    }));
+  } catch {}
+  if (editablePlainText(element).includes(value.slice(0, 20))) {
+    dispatchInput(element, "insertFromPaste");
+    return;
+  }
+
+  selectEditableContents(element);
+  document.execCommand("delete", false);
+  const inserted = document.execCommand("insertText", false, value);
+  if (!inserted) element.textContent = value;
+  dispatchInput(element, "insertText");
+}
+
 function replaceEditable(element, value, rich) {
   if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
     setTextControl(element, value);
@@ -143,7 +184,13 @@ function fillDraft(draft) {
 
 function findPostComposer(editables) {
   const pattern = /分享您的洞见|share your|what.+happening|post/i;
-  const hinted = editables
+  const dialog = [...document.querySelectorAll("[role='dialog'], [aria-modal='true'], .bn-modal, .bn-drawer")]
+    .filter(isVisible)
+    .map((element) => ({ element, ...box(element) }))
+    .sort((a, b) => b.area - a.area)[0]?.element || null;
+  const scopedEditables = dialog ? editables.filter((element) => dialog.contains(element)) : editables;
+
+  const hinted = (scopedEditables.length ? scopedEditables : editables)
     .filter((element) => pattern.test(`${element.textContent || ""} ${element.getAttribute("placeholder") || ""} ${element.getAttribute("aria-label") || ""} ${attributesText(element)}`))
     .map((element) => ({ element, ...box(element) }))
     .sort((a, b) => b.area - a.area);
@@ -152,7 +199,7 @@ function findPostComposer(editables) {
   const active = document.activeElement;
   if (active && editables.includes(active)) return active;
 
-  return editables
+  return (scopedEditables.length ? scopedEditables : editables)
     .map((element) => ({ element, ...box(element) }))
     .sort((a, b) => b.area - a.area)[0]?.element || null;
 }
@@ -163,7 +210,11 @@ function fillPostDraft(draft) {
   if (!composer) {
     throw new Error(`未找到币安广场推文输入框。检测到 ${editables.length} 个可编辑控件：${JSON.stringify(describeEditables(editables))}`);
   }
-  replaceEditable(composer, draft.text || "", false);
+  insertPlainTextEditable(composer, draft.text || "");
+  const probe = (draft.text || "").slice(0, 20);
+  if (probe && !editablePlainText(composer).includes(probe)) {
+    throw new Error("已定位到推文输入框，但写入后未检测到正文。请先点击输入框，再重试。");
+  }
   return {
     composerTag: composer.tagName,
     editableCount: editables.length
@@ -1091,6 +1142,10 @@ function createImageAssistant(draft) {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "PING_BINANCE_CONTENT") {
+    sendResponse({ ok: true });
+    return;
+  }
   if (message?.type === "START_IMAGE_ASSISTANT") {
     try {
       sendResponse({ ok: true, result: createImageAssistant(message.draft || {}) });

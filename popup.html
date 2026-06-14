@@ -16,13 +16,18 @@
     .settings strong { display: block; margin-bottom: 4px; color: #f0b90b; }
     .hint { font-size: 11px; color: #727a85; }
     button { width: 100%; margin: 6px 0; padding: 11px 12px; border: 1px solid #2b3139; border-radius: 8px; color: #eaecef; background: #181a20; font-weight: 650; cursor: pointer; }
+    button:disabled { cursor: progress; opacity: .68; }
     button.primary { border-color: #f0b90b; color: #181a20; background: #f0b90b; }
-    #status { min-height: 42px; margin-top: 12px; padding: 10px; border-radius: 8px; color: #b7bdc6; background: #181a20; white-space: pre-wrap; }
+    #status { position: sticky; top: 0; z-index: 5; min-height: 42px; margin: 12px 0; padding: 10px; border: 1px solid #2b3139; border-radius: 8px; color: #b7bdc6; background: #181a20; white-space: pre-wrap; box-shadow: 0 8px 22px rgba(0,0,0,.28); }
+    #status.working { border-color: #f0b90b; color: #f0b90b; }
+    #status.ok { border-color: #0ecb81; color: #0ecb81; }
+    #status.error { border-color: #f6465d; color: #f6465d; }
   </style>
 </head>
 <body>
   <h1>币安广场文章排版工具</h1>
   <p>采集、排版、填入草稿。支持文章和短帖，扩展不会点击发布。</p>
+  <div id="status">等待操作</div>
   <button class="primary" id="extract">采集当前 X Article 并打开排版器</button>
   <button id="formatter">打开排版器</button>
   <button id="fill">把已保存版本填入当前币安草稿</button>
@@ -42,7 +47,6 @@
     <div class="hint">Chrome 只能静默保存到默认下载目录下的子文件夹；勾选“另存为”后可选择其他位置。</div>
     <button id="save-download-settings">保存下载设置</button>
   </section>
-  <div id="status">等待操作</div>
   <script src="popup.js"></script>
 </body>
 </html>
