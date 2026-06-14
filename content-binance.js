@@ -104,7 +104,7 @@ function normalizeTweetHandles(value) {
   const merged = [];
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    const handle = line.match(/^@?([A-Za-z][A-Za-z0-9_]{0,14})$/)?.[1] || "";
+    const handle = line.match(/^@([A-Za-z][A-Za-z0-9_]{0,14})$/)?.[1] || "";
     const previous = merged[merged.length - 1] || "";
     const next = lines[index + 1] || "";
     const shouldJoin = handle &&
