@@ -181,10 +181,16 @@ function ensureAssistantStyles() {
     }
     #bs-image-assistant {
       position: fixed; top: 18px; right: 18px; z-index: 2147483647;
-      width: 330px; padding: 15px; border: 1px solid #3a424d; border-radius: 12px;
+      width: 330px; max-height: calc(100vh - 36px); padding: 15px;
+      overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable;
+      box-sizing: border-box;
+      border: 1px solid #3a424d; border-radius: 12px;
       color: #eaecef; background: #11151b; box-shadow: 0 16px 50px rgba(0,0,0,.5);
       font: 13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     }
+    #bs-image-assistant::-webkit-scrollbar { width: 8px; }
+    #bs-image-assistant::-webkit-scrollbar-thumb { border-radius: 8px; background: #48515d; }
+    #bs-image-assistant::-webkit-scrollbar-track { background: transparent; }
     #bs-image-assistant * { box-sizing: border-box; }
     #bs-image-assistant h3 { margin: 0 0 8px; color: #f0b90b; font-size: 16px; }
     #bs-image-assistant p { margin: 7px 0; color: #c9ced5; }
@@ -295,6 +301,25 @@ function positionTargetMarker(placeholder, index) {
   marker.style.height = `${Math.max(24, rect.height + 16)}px`;
 }
 
+function scrollPlaceholderIntoView(placeholder) {
+  if (!placeholder?.isConnected) return;
+  placeholder.scrollIntoView({ behavior: "auto", block: "center", inline: "nearest" });
+  positionTargetMarker(placeholder, imageAssistantState?.index || 0);
+}
+
+function schedulePlaceholderScroll(index) {
+  if (!imageAssistantState) return;
+  imageAssistantState.scrollTimers?.forEach(clearTimeout);
+  imageAssistantState.scrollTimers = [0, 120, 420].map((delay) =>
+    setTimeout(() => {
+      if (!imageAssistantState || imageAssistantState.index !== index) return;
+      const editor = currentAssistantEditor();
+      const placeholder = editor ? findPlaceholder(editor, index + 1) : null;
+      if (placeholder) scrollPlaceholderIntoView(placeholder);
+    }, delay)
+  );
+}
+
 function refreshAssistantTarget(scroll = false) {
   if (!imageAssistantState) return null;
   const editor = currentAssistantEditor();
@@ -306,7 +331,7 @@ function refreshAssistantTarget(scroll = false) {
     return null;
   }
   placeholder.classList.add("bs-image-target");
-  if (scroll) placeholder.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (scroll) scrollPlaceholderIntoView(placeholder);
   positionTargetMarker(placeholder, imageAssistantState.index);
   return placeholder;
 }
@@ -339,6 +364,7 @@ function stopAssistantTargetWatcher() {
   imageAssistantState.observer?.disconnect();
   clearTimeout(imageAssistantState.mutationTimer);
   imageAssistantState.refreshTimers?.forEach(clearTimeout);
+  imageAssistantState.scrollTimers?.forEach(clearTimeout);
   if (imageAssistantState.viewportHandler) {
     window.removeEventListener("scroll", imageAssistantState.viewportHandler, true);
     window.removeEventListener("resize", imageAssistantState.viewportHandler);
@@ -785,6 +811,7 @@ async function focusReviewSlot(index, prefix = "") {
   ].join("\n");
   updateAssistantOverlay(message);
   markVerifiedPlaceholders();
+  schedulePlaceholderScroll(imageAssistantState.index);
 }
 
 async function moveReviewSlot(direction) {
@@ -861,6 +888,7 @@ async function prepareAssistantImage(download = false, resetSnapshot = false, op
   if (placeholder) {
     setCaretBefore(placeholder);
     scheduleAssistantTargetRefresh();
+    schedulePlaceholderScroll(index);
   }
   if (toolbar) toolbar.classList.add("bs-image-toolbar-target");
 
