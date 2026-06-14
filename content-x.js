@@ -12,6 +12,13 @@ function cleanMultilineText(value) {
     .trim();
 }
 
+function normalizeTweetHandles(value) {
+  return String(value || "")
+    .replace(/(?<![A-Za-z0-9._%+-])@([A-Za-z0-9_]{1,15})\b/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+([，。！？：；、])/g, "$1");
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replaceAll("&", "&amp;")
@@ -246,7 +253,7 @@ function extractTweet() {
   const article = findTweetArticle();
   if (!article) throw new Error("未找到当前 X 推文正文。请先打开单条推文详情页。");
   const textElement = directTweetText(article);
-  const text = cleanMultilineText(textElement?.innerText);
+  const text = normalizeTweetHandles(cleanMultilineText(textElement?.innerText));
   if (!text) throw new Error("当前推文正文为空或无法读取。");
   const assets = extractTweetImages(article);
 

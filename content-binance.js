@@ -92,6 +92,30 @@ function editablePlainText(element) {
   return element.innerText || element.textContent || "";
 }
 
+function normalizedPlainText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeTweetHandles(value) {
+  return String(value || "")
+    .replace(/(?<![A-Za-z0-9._%+-])@([A-Za-z0-9_]{1,15})\b/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+([，。！？：；、])/g, "$1");
+}
+
+function postComposerScope() {
+  return [...document.querySelectorAll("[role='dialog'], [aria-modal='true'], .bn-modal, .bn-drawer")]
+    .filter(isVisible)
+    .map((element) => ({ element, ...box(element) }))
+    .sort((a, b) => b.area - a.area)[0]?.element || document.body;
+}
+
+function scopeContainsDraftText(scope, text) {
+  const probe = normalizedPlainText(text).slice(0, 24);
+  if (!probe) return true;
+  return normalizedPlainText(scope?.innerText || scope?.textContent || "").includes(probe);
+}
+
 function selectEditableContents(element) {
   element.focus();
   const selection = window.getSelection();
@@ -184,10 +208,7 @@ function fillDraft(draft) {
 
 function findPostComposer(editables) {
   const pattern = /分享您的洞见|share your|what.+happening|post/i;
-  const dialog = [...document.querySelectorAll("[role='dialog'], [aria-modal='true'], .bn-modal, .bn-drawer")]
-    .filter(isVisible)
-    .map((element) => ({ element, ...box(element) }))
-    .sort((a, b) => b.area - a.area)[0]?.element || null;
+  const dialog = postComposerScope();
   const scopedEditables = dialog ? editables.filter((element) => dialog.contains(element)) : editables;
 
   const hinted = (scopedEditables.length ? scopedEditables : editables)
@@ -204,19 +225,22 @@ function findPostComposer(editables) {
     .sort((a, b) => b.area - a.area)[0]?.element || null;
 }
 
-function fillPostDraft(draft) {
+async function fillPostDraft(draft) {
   const editables = editableElements();
   const composer = findPostComposer(editables);
   if (!composer) {
     throw new Error(`未找到币安广场推文输入框。检测到 ${editables.length} 个可编辑控件：${JSON.stringify(describeEditables(editables))}`);
   }
-  insertPlainTextEditable(composer, draft.text || "");
-  const probe = (draft.text || "").slice(0, 20);
-  if (probe && !editablePlainText(composer).includes(probe)) {
+  const text = normalizeTweetHandles(draft.text || "");
+  insertPlainTextEditable(composer, text);
+  await sleep(120);
+  const refreshedComposer = findPostComposer(editableElements()) || composer;
+  const scope = postComposerScope();
+  if (text && !scopeContainsDraftText(refreshedComposer, text) && !scopeContainsDraftText(scope, text)) {
     throw new Error("已定位到推文输入框，但写入后未检测到正文。请先点击输入框，再重试。");
   }
   return {
-    composerTag: composer.tagName,
+    composerTag: refreshedComposer.tagName,
     editableCount: editables.length
   };
 }
@@ -1155,12 +1179,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return;
   }
   if (message?.type === "FILL_BINANCE_POST") {
-    try {
-      sendResponse({ ok: true, result: fillPostDraft(message.draft || {}) });
-    } catch (error) {
-      sendResponse({ ok: false, error: error.message || String(error) });
-    }
-    return;
+    fillPostDraft(message.draft || {})
+      .then((result) => sendResponse({ ok: true, result }))
+      .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
+    return true;
   }
   if (message?.type !== "FILL_BINANCE_DRAFT") return;
   try {
