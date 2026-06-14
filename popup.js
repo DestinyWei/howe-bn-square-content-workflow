@@ -1,6 +1,10 @@
 const statusBox = document.querySelector("#status");
 const downloadFolderInput = document.querySelector("#download-folder");
 const downloadSaveAsInput = document.querySelector("#download-save-as");
+const tweetAssetsPanel = document.querySelector("#tweet-assets");
+const tweetAssetsCount = document.querySelector("#tweet-assets-count");
+const tweetAssetsGrid = document.querySelector("#tweet-assets-grid");
+let tweetAssetsRenderId = 0;
 
 function setStatus(message, type = "") {
   statusBox.textContent = message;
@@ -62,6 +66,55 @@ function isWorkflowDraft(value) {
 
 function isPostDraft(value) {
   return value?.workflow === "x-tweet-to-binance-square-post" && typeof value?.text === "string";
+}
+
+function assetUrl(asset) {
+  return typeof asset === "string" ? asset : asset?.url || asset?.src || "";
+}
+
+async function fetchAssetDataUrl(url) {
+  const response = await chrome.runtime.sendMessage({ type: "FETCH_ARTICLE_ASSET", url });
+  if (!response?.ok) throw new Error(response?.error || "图片读取失败。");
+  return response.dataUrl;
+}
+
+function renderTweetAssets(draft) {
+  const assets = (draft?.assets || []).map(assetUrl).filter(Boolean);
+  const renderId = ++tweetAssetsRenderId;
+  tweetAssetsGrid.textContent = "";
+  tweetAssetsCount.textContent = `${assets.length} 张`;
+  tweetAssetsPanel.classList.toggle("is-visible", assets.length > 0);
+  assets.forEach((url, index) => {
+    const link = document.createElement("a");
+    link.className = "tweet-asset";
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+
+    const image = document.createElement("img");
+    image.alt = `推文图片 ${index + 1}`;
+    image.loading = "lazy";
+    image.src = "";
+
+    const label = document.createElement("small");
+    label.textContent = `${String(index + 1).padStart(2, "0")} · ${url}`;
+
+    link.append(image, label);
+    tweetAssetsGrid.append(link);
+
+    fetchAssetDataUrl(url)
+      .then((dataUrl) => {
+        if (renderId === tweetAssetsRenderId) image.src = dataUrl;
+      })
+      .catch(() => {
+        if (renderId === tweetAssetsRenderId) image.src = url;
+      });
+  });
+}
+
+async function loadTweetAssetsPreview() {
+  const { binancePostDraft } = await chrome.storage.local.get("binancePostDraft");
+  renderTweetAssets(isPostDraft(binancePostDraft) ? binancePostDraft : null);
 }
 
 async function clipboardDraft() {
@@ -173,6 +226,7 @@ document.querySelector("#extract-tweet").addEventListener("click", async () => {
       updatedAt: new Date().toISOString()
     };
     await chrome.storage.local.set({ binancePostDraft: draft });
+    renderTweetAssets(draft);
     setStatus(`已采集 X 推文：${draft.text.length} 字符 · 图片 ${draft.assets.length} 张。\n打开币安广场短帖输入框后，点击“填入当前币安广场推文”。`, "ok");
   }).catch((error) => setStatus(error.message || String(error), "error"));
 });
@@ -196,3 +250,4 @@ document.querySelector("#fill-post").addEventListener("click", async () => {
 });
 
 loadDownloadSettings();
+loadTweetAssetsPreview();

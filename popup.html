@@ -22,6 +22,14 @@
     #status.working { border-color: #f0b90b; color: #f0b90b; }
     #status.ok { border-color: #0ecb81; color: #0ecb81; }
     #status.error { border-color: #f6465d; color: #f6465d; }
+    .tweet-assets { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #2b3139; }
+    .tweet-assets.is-visible { display: block; }
+    .tweet-assets-title { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; color: #eaecef; font-size: 12px; font-weight: 700; }
+    .tweet-assets-title span { color: #929aa5; font-weight: 600; }
+    .tweet-assets-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .tweet-asset { min-width: 0; color: #b7bdc6; text-decoration: none; }
+    .tweet-asset img { display: block; width: 100%; height: 86px; border: 1px solid #2b3139; border-radius: 7px; object-fit: contain; background: #080b0e; }
+    .tweet-asset small { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #727a85; }
   </style>
 </head>
 <body>
@@ -37,6 +45,10 @@
     <button class="primary" id="extract-tweet">采集当前 X 推文</button>
     <button id="fill-post">填入当前币安广场推文</button>
     <div class="hint">适合单条 X 推文搬运到币安广场短帖输入框；不会点击发布。</div>
+    <div class="tweet-assets" id="tweet-assets">
+      <div class="tweet-assets-title">推文图片素材 <span id="tweet-assets-count">0 张</span></div>
+      <div class="tweet-assets-grid" id="tweet-assets-grid"></div>
+    </div>
   </section>
   <section class="settings">
     <strong>图片下载设置</strong>

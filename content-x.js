@@ -13,10 +13,35 @@ function cleanMultilineText(value) {
 }
 
 function normalizeTweetHandles(value) {
-  return String(value || "")
+  const lines = String(value || "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim());
+  const merged = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const handle = line.match(/^@?([A-Za-z][A-Za-z0-9_]{0,14})$/)?.[1] || "";
+    const previous = merged[merged.length - 1] || "";
+    const next = lines[index + 1] || "";
+    const shouldJoin = handle &&
+      previous &&
+      next &&
+      !/[。！？!?]$/.test(previous) &&
+      !/^(?:[#•*~-]|\d+[.)、])/.test(next);
+    if (shouldJoin) {
+      merged[merged.length - 1] = `${previous} ${handle} ${next}`.replace(/[ \t]{2,}/g, " ");
+      index += 1;
+      continue;
+    }
+    merged.push(line.replace(/(?<![A-Za-z0-9._%+-])@([A-Za-z0-9_]{1,15})\b/g, "$1"));
+  }
+  return merged
+    .join("\n")
     .replace(/(?<![A-Za-z0-9._%+-])@([A-Za-z0-9_]{1,15})\b/g, "$1")
     .replace(/[ \t]{2,}/g, " ")
-    .replace(/[ \t]+([，。！？：；、])/g, "$1");
+    .replace(/[ \t]+([，。！？：；、])/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function escapeHtml(value) {
