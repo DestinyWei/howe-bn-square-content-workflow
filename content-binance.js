@@ -236,9 +236,28 @@ function findPlaceholder(editor, index) {
     .sort((a, b) => box(a).area - box(b).area)[0] || null;
 }
 
+function findPlaceholders(editor, index) {
+  const pattern = new RegExp(`正文图片\\s*${index}\\s*[：:]`);
+  return [...editor.querySelectorAll("p,div,li,blockquote")]
+    .filter((element) => pattern.test((element.textContent || "").trim()))
+    .filter((element) => ![...element.children].some((child) => pattern.test((child.textContent || "").trim())))
+    .sort((a, b) => topLevelIndex(editor, a) - topLevelIndex(editor, b));
+}
+
 function allPlaceholders(editor) {
   return [...editor.querySelectorAll("p,div,li,blockquote")]
-    .filter((element) => /正文图片\s*\d+\s*[：:]/.test((element.textContent || "").trim()));
+    .filter((element) => /正文图片\s*\d+\s*[：:]/.test((element.textContent || "").trim()))
+    .filter((element) => ![...element.children].some((child) =>
+      /正文图片\s*\d+\s*[：:]/.test((child.textContent || "").trim())
+    ));
+}
+
+function removeDuplicatePlaceholders(editor, index) {
+  if (!editor) return null;
+  const placeholders = findPlaceholders(editor, index);
+  placeholders.slice(1).forEach((placeholder) => placeholder.remove());
+  if (placeholders.length > 1) dispatchInput(editor, "deleteContentBackward");
+  return placeholders[0] || null;
 }
 
 function setCaretBefore(element) {
@@ -389,6 +408,66 @@ function newMediaNearPlaceholder(editor, snapshot, placeholder) {
   return { addedMedia, nearby };
 }
 
+function mediaIsLoaded(media) {
+  if (!media?.isConnected) return false;
+  const images = media.matches("img") ? [media] : [...media.querySelectorAll("img")];
+  if (images.length) {
+    return images.some((image) => {
+      const source = image.currentSrc || image.src || "";
+      return image.complete &&
+        image.naturalWidth > 0 &&
+        image.naturalHeight > 0 &&
+        !/^(data|blob):/i.test(source);
+    });
+  }
+  const source = media.getAttribute("data-src") || media.getAttribute("data-image") || "";
+  return Boolean(source) && !/^(data|blob):/i.test(source);
+}
+
+function mediaForAssetIndex(editor, index) {
+  if (!editor) return null;
+  return mediaNodes(editor).find((media) =>
+    media.dataset.bsAssetIndex === String(index + 1) && mediaIsLoaded(media)
+  ) || null;
+}
+
+function markInsertedMedia(media, index) {
+  if (media) media.dataset.bsAssetIndex = String(index + 1);
+}
+
+async function waitForNewMedia(editor, snapshot, placeholder, timeout = 6500) {
+  const startedAt = Date.now();
+  let latest = { addedMedia: [], nearby: [] };
+  while (Date.now() - startedAt < timeout) {
+    latest = newMediaNearPlaceholder(editor, snapshot, placeholder);
+    const loadedNearby = latest.nearby.filter(mediaIsLoaded);
+    if (loadedNearby.length) return { ...latest, nearby: loadedNearby };
+    await sleep(250);
+  }
+  return { ...latest, nearby: latest.nearby.filter(mediaIsLoaded) };
+}
+
+function removeMediaAddedSince(editor, snapshot) {
+  const added = newMediaSince(editor, snapshot);
+  const removable = new Set();
+  added.forEach((media) => {
+    const containingPlaceholder = allPlaceholders(editor).find((placeholder) => placeholder.contains(media));
+    if (containingPlaceholder) {
+      let nested = media;
+      while (nested.parentElement && nested.parentElement !== containingPlaceholder) nested = nested.parentElement;
+      removable.add(nested);
+      return;
+    }
+    let current = media;
+    while (current.parentElement && current.parentElement !== editor) current = current.parentElement;
+    if (current.parentElement === editor) removable.add(current);
+    else removable.add(media);
+  });
+  removable.forEach((media) => media.remove());
+  if (removable.size) dispatchInput(editor, "deleteContentBackward");
+  return removable.size;
+}
+
 function topLevelIndex(editor, node) {
   let current = node;
   while (current && current.parentElement !== editor) current = current.parentElement;
@@ -520,60 +599,60 @@ async function attemptPasteImage(editor, placeholder, blob, dataUrl, index, sour
   }
 }
 
-async function insertHtmlImage(editor, placeholder, dataUrl, index) {
-  const freshPlaceholder = findPlaceholder(editor, index + 1) || placeholder;
-  const image = document.createElement("img");
-  image.src = dataUrl;
-  image.alt = `正文图片 ${index + 1}`;
-  freshPlaceholder.before(image);
-  dispatchInput(editor, "insertFromPaste");
-  return image;
-}
-
 async function insertAssistantImageAtPlaceholder(index) {
   const editor = currentAssistantEditor();
   if (!editor) return { ok: false, index, method: "none", message: "未找到正文编辑器。" };
-  const placeholder = findPlaceholder(editor, index + 1);
+  const placeholder = removeDuplicatePlaceholders(editor, index + 1) || findPlaceholder(editor, index + 1);
   if (!placeholder) return { ok: false, index, method: "none", message: `未找到正文图片 ${index + 1} 的占位符。` };
+  const existing = mediaForAssetIndex(editor, index);
+  if (existing) return { ok: true, index, method: "existing", media: existing };
 
   imageAssistantState.index = index;
   refreshAssistantTarget(true);
-  const snapshot = captureMediaSnapshot(editor);
   const sourceUrl = assetUrl(imageAssistantState.draft.assets[index]);
   const blob = await imageBlobForClipboard(await fetchAssistantAssetBlob(sourceUrl));
   const dataUrl = await blobToDataUrl(blob);
 
-  await attemptPasteImage(editor, placeholder, blob, dataUrl, index, sourceUrl);
-  await sleep(950);
-  let freshPlaceholder = findPlaceholder(editor, index + 1) || placeholder;
-  let verified = newMediaNearPlaceholder(editor, snapshot, freshPlaceholder);
-  if (verified.nearby.length) {
-    separateMediaFromPlaceholder(freshPlaceholder, verified.nearby[0]);
-    return { ok: true, index, method: "paste", media: verified.nearby[0] };
-  }
-  if (verified.addedMedia.length) {
-    const misplaced = verified.addedMedia[verified.addedMedia.length - 1];
-    if (moveMediaBeforePlaceholder(editor, freshPlaceholder, misplaced)) {
-      await sleep(250);
-      freshPlaceholder = findPlaceholder(editor, index + 1) || freshPlaceholder;
-      verified = newMediaNearPlaceholder(editor, snapshot, freshPlaceholder);
-      if (verified.nearby.length) {
-        separateMediaFromPlaceholder(freshPlaceholder, verified.nearby[0]);
-        return { ok: true, index, method: "paste-corrected", media: verified.nearby[0] };
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const snapshot = captureMediaSnapshot(editor);
+    let freshPlaceholder = removeDuplicatePlaceholders(editor, index + 1) || placeholder;
+    await attemptPasteImage(editor, freshPlaceholder, blob, dataUrl, index, sourceUrl);
+    let verified = await waitForNewMedia(editor, snapshot, freshPlaceholder);
+    if (verified.nearby.length) {
+      separateMediaFromPlaceholder(freshPlaceholder, verified.nearby[0]);
+      markInsertedMedia(verified.nearby[0], index);
+      freshPlaceholder.dataset.bsImageInserted = String(index + 1);
+      return { ok: true, index, method: attempt === 1 ? "paste" : "paste-retry", media: verified.nearby[0] };
+    }
+
+    const loadedMisplaced = verified.addedMedia.filter(mediaIsLoaded);
+    if (loadedMisplaced.length) {
+      const misplaced = loadedMisplaced[loadedMisplaced.length - 1];
+      if (moveMediaBeforePlaceholder(editor, freshPlaceholder, misplaced)) {
+        await sleep(350);
+        freshPlaceholder = findPlaceholder(editor, index + 1) || freshPlaceholder;
+        verified = newMediaNearPlaceholder(editor, snapshot, freshPlaceholder);
+        const loadedNearby = verified.nearby.find(mediaIsLoaded);
+        if (loadedNearby) {
+          separateMediaFromPlaceholder(freshPlaceholder, loadedNearby);
+          markInsertedMedia(loadedNearby, index);
+          freshPlaceholder.dataset.bsImageInserted = String(index + 1);
+          return { ok: true, index, method: "paste-corrected", media: loadedNearby };
+        }
       }
     }
-    return { ok: false, index, method: "paste", message: `正文图片 ${index + 1} 已新增但自动纠偏失败，请人工移动到对应占位符前。` };
+
+    removeMediaAddedSince(editor, snapshot);
+    removeDuplicatePlaceholders(editor, index + 1);
+    await sleep(350);
   }
 
-  await insertHtmlImage(editor, freshPlaceholder, dataUrl, index);
-  await sleep(250);
-  freshPlaceholder = findPlaceholder(editor, index + 1) || freshPlaceholder;
-  verified = newMediaNearPlaceholder(editor, snapshot, freshPlaceholder);
-  if (verified.nearby.length) {
-    separateMediaFromPlaceholder(freshPlaceholder, verified.nearby[0]);
-    return { ok: true, index, method: "rich-html", media: verified.nearby[0] };
-  }
-  return { ok: false, index, method: "rich-html", message: `正文图片 ${index + 1} 自动插入失败，请使用单张复制或手动上传。` };
+  return {
+    ok: false,
+    index,
+    method: "paste",
+    message: `正文图片 ${index + 1} 两次上传均未完成，已自动清理损坏图片框。请使用单张复制或手动上传。`
+  };
 }
 
 async function imageBlobForClipboard(blob) {
@@ -671,11 +750,15 @@ function resultText(result) {
   if (result.ok) {
     const method = result.method === "paste"
       ? "粘贴事件"
-      : result.method === "paste-corrected"
-        ? "粘贴后自动纠偏"
-        : result.method === "manual-verify"
-          ? "人工验证"
-          : "指定位置富文本兜底";
+      : result.method === "paste-retry"
+        ? "粘贴重试"
+        : result.method === "paste-corrected"
+          ? "粘贴后自动纠偏"
+          : result.method === "existing"
+            ? "已存在，跳过重复插入"
+            : result.method === "manual-verify"
+              ? "人工验证"
+              : "自动插入";
     return `已插入，方式：${method}。`;
   }
   return result.message || "插入失败。";
@@ -712,14 +795,29 @@ async function moveReviewSlot(direction) {
 async function batchInsertAllImages() {
   if (!imageAssistantState || imageAssistantState.busy) return;
   setAssistantBusy(true);
-  imageAssistantState.batchResults = [];
-  imageAssistantState.verifiedIndices = new Set();
   const total = imageAssistantState.draft.assets.length;
   try {
     for (let index = 0; index < total; index += 1) {
+      const previous = imageAssistantState.batchResults[index];
+      const existing = mediaForAssetIndex(currentAssistantEditor(), index);
+      if (previous?.ok || existing) {
+        removeDuplicatePlaceholders(currentAssistantEditor(), index + 1);
+        if (existing && !previous?.ok) setBatchResult({ ok: true, index, method: "existing", media: existing });
+        continue;
+      }
       imageAssistantState.index = index;
-      updateAssistantOverlay(`正在自动插入第 ${index + 1} / ${total} 张配图...\n占位符会保留，稍后用于人工审核。`);
-      const result = await insertAssistantImageAtPlaceholder(index);
+      updateAssistantOverlay(`正在自动插入第 ${index + 1} / ${total} 张配图...\n会等待图片真实加载；失败项自动清理并重试。`);
+      let result;
+      try {
+        result = await insertAssistantImageAtPlaceholder(index);
+      } catch (error) {
+        result = {
+          ok: false,
+          index,
+          method: "none",
+          message: `正文图片 ${index + 1} 处理失败：${error.message || String(error)}`
+        };
+      }
       setBatchResult(result);
       markVerifiedPlaceholders();
       await sleep(250);
@@ -792,6 +890,7 @@ function finishCurrentImage() {
     return;
   }
   separateMediaFromPlaceholder(verification.placeholder, verification.media);
+  markInsertedMedia(verification.media, index);
   setBatchResult({ ok: true, index, method: "manual-verify", media: verification.media });
   verification.placeholder.classList.add("bs-image-verified");
   if (index >= draft.assets.length - 1) {
