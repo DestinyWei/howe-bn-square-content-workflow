@@ -22,11 +22,17 @@
 </head>
 <body>
   <h1>币安广场文章排版工具</h1>
-  <p>采集、排版、填入草稿。扩展不会点击发布。</p>
+  <p>采集、排版、填入草稿。支持文章和短帖，扩展不会点击发布。</p>
   <button class="primary" id="extract">采集当前 X Article 并打开排版器</button>
   <button id="formatter">打开排版器</button>
   <button id="fill">把已保存版本填入当前币安草稿</button>
   <button id="images">开始 / 继续批量插图助手</button>
+  <section class="settings">
+    <strong>X 推文 → 币安广场推文</strong>
+    <button class="primary" id="extract-tweet">采集当前 X 推文</button>
+    <button id="fill-post">填入当前币安广场推文</button>
+    <div class="hint">适合单条 X 推文搬运到币安广场短帖输入框；不会点击发布。</div>
+  </section>
   <section class="settings">
     <strong>图片下载设置</strong>
     <label>下载目录下的子文件夹

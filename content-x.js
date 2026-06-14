@@ -2,6 +2,16 @@ function cleanText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
+function cleanMultilineText(value) {
+  return String(value || "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replaceAll("&", "&amp;")
@@ -192,7 +202,77 @@ function extractArticle() {
   };
 }
 
+function currentStatusId() {
+  return location.pathname.match(/\/status\/(\d+)/)?.[1] || "";
+}
+
+function directTweetText(article) {
+  return [...article.querySelectorAll("[data-testid='tweetText']")]
+    .find((element) => element.closest("article") === article) || null;
+}
+
+function findTweetArticle() {
+  const tweetId = currentStatusId();
+  const articles = [...document.querySelectorAll("article")]
+    .filter((article) => directTweetText(article))
+    .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+  if (!articles.length) return null;
+  if (tweetId) {
+    const matched = articles.find((article) =>
+      [...article.querySelectorAll("a[href*='/status/']")]
+        .some((link) => link.href.includes(`/status/${tweetId}`))
+    );
+    if (matched) return matched;
+  }
+  return articles[0];
+}
+
+function extractTweetImages(article) {
+  const seen = new Set();
+  return [...article.querySelectorAll("img[src*='pbs.twimg.com/media']")]
+    .filter((image) => image.closest("article") === article)
+    .map((image) => ({
+      url: originalMediaUrl(image.currentSrc || image.src),
+      alt: cleanText(image.alt)
+    }))
+    .filter((asset) => {
+      if (!asset.url || seen.has(asset.url)) return false;
+      seen.add(asset.url);
+      return true;
+    });
+}
+
+function extractTweet() {
+  const article = findTweetArticle();
+  if (!article) throw new Error("未找到当前 X 推文正文。请先打开单条推文详情页。");
+  const textElement = directTweetText(article);
+  const text = cleanMultilineText(textElement?.innerText);
+  if (!text) throw new Error("当前推文正文为空或无法读取。");
+  const assets = extractTweetImages(article);
+
+  return {
+    version: 1,
+    source: "x-tweet",
+    sourceUrl: location.href,
+    extractedAt: new Date().toISOString(),
+    text,
+    assets,
+    diagnostics: {
+      characters: text.length,
+      imageCount: assets.length
+    }
+  };
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "EXTRACT_X_TWEET") {
+    try {
+      sendResponse({ ok: true, tweet: extractTweet() });
+    } catch (error) {
+      sendResponse({ ok: false, error: error.message || String(error) });
+    }
+    return;
+  }
   if (message?.type !== "EXTRACT_X_ARTICLE") return;
   try {
     const article = extractArticle();

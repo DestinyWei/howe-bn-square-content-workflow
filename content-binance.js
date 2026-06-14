@@ -141,6 +141,35 @@ function fillDraft(draft) {
   };
 }
 
+function findPostComposer(editables) {
+  const pattern = /分享您的洞见|share your|what.+happening|post/i;
+  const hinted = editables
+    .filter((element) => pattern.test(`${element.textContent || ""} ${element.getAttribute("placeholder") || ""} ${element.getAttribute("aria-label") || ""} ${attributesText(element)}`))
+    .map((element) => ({ element, ...box(element) }))
+    .sort((a, b) => b.area - a.area);
+  if (hinted[0]?.element) return hinted[0].element;
+
+  const active = document.activeElement;
+  if (active && editables.includes(active)) return active;
+
+  return editables
+    .map((element) => ({ element, ...box(element) }))
+    .sort((a, b) => b.area - a.area)[0]?.element || null;
+}
+
+function fillPostDraft(draft) {
+  const editables = editableElements();
+  const composer = findPostComposer(editables);
+  if (!composer) {
+    throw new Error(`未找到币安广场推文输入框。检测到 ${editables.length} 个可编辑控件：${JSON.stringify(describeEditables(editables))}`);
+  }
+  replaceEditable(composer, draft.text || "", false);
+  return {
+    composerTag: composer.tagName,
+    editableCount: editables.length
+  };
+}
+
 let imageAssistantState = null;
 
 function ensureAssistantStyles() {
@@ -1065,6 +1094,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "START_IMAGE_ASSISTANT") {
     try {
       sendResponse({ ok: true, result: createImageAssistant(message.draft || {}) });
+    } catch (error) {
+      sendResponse({ ok: false, error: error.message || String(error) });
+    }
+    return;
+  }
+  if (message?.type === "FILL_BINANCE_POST") {
+    try {
+      sendResponse({ ok: true, result: fillPostDraft(message.draft || {}) });
     } catch (error) {
       sendResponse({ ok: false, error: error.message || String(error) });
     }

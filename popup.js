@@ -30,6 +30,10 @@ function isWorkflowDraft(value) {
   return value?.workflow === "x-article-to-binance-square" && typeof value?.html === "string";
 }
 
+function isPostDraft(value) {
+  return value?.workflow === "x-tweet-to-binance-square-post" && typeof value?.text === "string";
+}
+
 async function clipboardDraft() {
   try {
     const text = await navigator.clipboard.readText();
@@ -120,6 +124,52 @@ document.querySelector("#images").addEventListener("click", async () => {
     });
     if (!response?.ok) throw new Error(response?.error || "无法启动插图助手。");
     setStatus(`插图助手已启动，共 ${binanceDraft.assets.length} 张正文图片。\n请按照页面右上角助手操作。`);
+  } catch (error) {
+    setStatus(error.message || String(error));
+  }
+});
+
+document.querySelector("#extract-tweet").addEventListener("click", async () => {
+  try {
+    const tab = await activeTab();
+    if (!tab?.id || !/^https:\/\/(x|twitter)\.com\//.test(tab.url || "")) {
+      throw new Error("请先打开一条 X 推文详情页。");
+    }
+    setStatus("正在读取当前 X 推文…");
+    const response = await chrome.tabs.sendMessage(tab.id, { type: "EXTRACT_X_TWEET" });
+    if (!response?.ok) throw new Error(response?.error || "未能识别推文内容。");
+    const draft = {
+      workflow: "x-tweet-to-binance-square-post",
+      version: 1,
+      source: "popup",
+      sourceUrl: response.tweet.sourceUrl,
+      text: response.tweet.text,
+      assets: response.tweet.assets || [],
+      diagnostics: response.tweet.diagnostics || null,
+      updatedAt: new Date().toISOString()
+    };
+    await chrome.storage.local.set({ binancePostDraft: draft });
+    setStatus(`已采集 X 推文：${draft.text.length} 字符 · 图片 ${draft.assets.length} 张。\n打开币安广场短帖输入框后，点击“填入当前币安广场推文”。`);
+  } catch (error) {
+    setStatus(error.message || String(error));
+  }
+});
+
+document.querySelector("#fill-post").addEventListener("click", async () => {
+  try {
+    const tab = await activeTab();
+    if (!tab?.id || !/^https:\/\/(www\.)?binance\.com\//.test(tab.url || "")) {
+      throw new Error("请先打开币安广场页面，并点开短帖输入框。");
+    }
+    const { binancePostDraft } = await chrome.storage.local.get("binancePostDraft");
+    if (!isPostDraft(binancePostDraft)) throw new Error("还没有已采集的 X 推文。");
+    setStatus("正在填入币安广场推文…");
+    const response = await chrome.tabs.sendMessage(tab.id, {
+      type: "FILL_BINANCE_POST",
+      draft: binancePostDraft
+    });
+    if (!response?.ok) throw new Error(response?.error || "填入失败。");
+    setStatus(`已填入推文正文。\n如原推文包含 ${binancePostDraft.assets?.length || 0} 张图片，请手动上传并检查预览；不会自动发布。`);
   } catch (error) {
     setStatus(error.message || String(error));
   }
