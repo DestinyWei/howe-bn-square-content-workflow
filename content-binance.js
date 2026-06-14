@@ -196,6 +196,9 @@ function ensureAssistantStyles() {
     #bs-image-assistant .bs-status { padding: 8px; border-radius: 6px; color: #b7bdc6; background: #080b0e; white-space: pre-wrap; }
     #bs-image-assistant .bs-option { display: flex; align-items: center; gap: 7px; margin: 8px 0 3px; color: #c9ced5; }
     #bs-image-assistant .bs-option input { width: auto; margin: 0; accent-color: #f0b90b; }
+    #bs-image-assistant .bs-folder-option { display: block; margin: 8px 0 3px; color: #c9ced5; }
+    #bs-image-assistant .bs-folder-option input { width: 100%; margin-top: 4px; padding: 7px; border: 1px solid #3a424d; border-radius: 6px; color: #eaecef; background: #080b0e; }
+    #bs-image-assistant .bs-download-hint { margin: 4px 0 8px; color: #7f8791; font-size: 11px; }
     #bs-image-assistant .bs-danger { grid-column: 1 / -1; border-color: #7a4b00; color: #f0b90b; background: #1e1708; font-weight: 750; }
   `;
   document.head.append(style);
@@ -203,6 +206,17 @@ function ensureAssistantStyles() {
 
 function assetUrl(asset) {
   return typeof asset === "string" ? asset : asset?.url || "";
+}
+
+function sanitizeDownloadFolder(value) {
+  return String(value || "binance-square-assets")
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "")
+    .split("/")
+    .filter((part) => part && part !== "." && part !== "..")
+    .map((part) => part.replace(/[<>:"|?*\u0000-\u001f]/g, "-").trim())
+    .filter(Boolean)
+    .join("/") || "binance-square-assets";
 }
 
 function assistantOverlay() {
@@ -410,7 +424,9 @@ async function downloadAssistantAsset(url, index, kind = "image") {
     type: "DOWNLOAD_ARTICLE_ASSET",
     url,
     index,
-    kind
+    kind,
+    folder: imageAssistantState?.downloadFolder || "binance-square-assets",
+    saveAs: Boolean(imageAssistantState?.downloadSaveAs)
   });
   if (!response?.ok) throw new Error(response?.error || "图片下载失败。");
   return response.filename;
@@ -601,6 +617,10 @@ function updateAssistantOverlay(message) {
   overlay.querySelector(".bs-status").textContent = message;
   const toggle = overlay.querySelector("[data-action='auto-download']");
   if (toggle) toggle.checked = Boolean(imageAssistantState.autoDownload);
+  const folder = overlay.querySelector("[data-action='download-folder']");
+  if (folder && document.activeElement !== folder) folder.value = imageAssistantState.downloadFolder || "binance-square-assets";
+  const saveAs = overlay.querySelector("[data-action='download-save-as']");
+  if (saveAs) saveAs.checked = Boolean(imageAssistantState.downloadSaveAs);
 }
 
 function setAssistantBusy(isBusy) {
@@ -786,6 +806,11 @@ function createImageAssistant(draft) {
     <p class="bs-url"></p>
     <p class="bs-status"></p>
     <label class="bs-option"><input type="checkbox" data-action="auto-download"> 自动下载兜底文件</label>
+    <label class="bs-folder-option">下载目录下的子文件夹
+      <input type="text" data-action="download-folder" placeholder="binance-square-assets">
+    </label>
+    <label class="bs-option"><input type="checkbox" data-action="download-save-as"> 每次弹出“另存为”</label>
+    <p class="bs-download-hint">静默下载只能保存到 Chrome 默认下载目录下的子文件夹。</p>
     <div class="bs-buttons">
       <button class="bs-primary bs-wide" data-action="batch">一键自动插入全部配图（保留占位符）</button>
       <button class="bs-primary bs-wide" data-action="copy">复制当前图片，然后粘贴</button>
@@ -807,9 +832,17 @@ function createImageAssistant(draft) {
     index: 0,
     batchResults: [],
     verifiedIndices: new Set(),
-    autoDownload: localStorage.getItem("bsAssistantAutoDownload") === "true"
+    autoDownload: localStorage.getItem("bsAssistantAutoDownload") === "true",
+    downloadFolder: "binance-square-assets",
+    downloadSaveAs: false
   };
   startAssistantTargetWatcher();
+  chrome.storage.local.get(["downloadFolder", "downloadSaveAs"]).then((settings) => {
+    if (!imageAssistantState) return;
+    imageAssistantState.downloadFolder = settings.downloadFolder || "binance-square-assets";
+    imageAssistantState.downloadSaveAs = Boolean(settings.downloadSaveAs);
+    updateAssistantOverlay(`下载设置已载入：${imageAssistantState.downloadSaveAs ? "每次弹出另存为" : `Downloads/${imageAssistantState.downloadFolder}/`}`);
+  });
 
   overlay.addEventListener("click", async (event) => {
     const action = event.target.closest("button")?.dataset.action;
@@ -841,14 +874,32 @@ function createImageAssistant(draft) {
   });
 
   overlay.addEventListener("change", (event) => {
-    if (event.target?.dataset?.action !== "auto-download" || !imageAssistantState) return;
-    imageAssistantState.autoDownload = event.target.checked;
-    localStorage.setItem("bsAssistantAutoDownload", String(imageAssistantState.autoDownload));
-    if (imageAssistantState.autoDownload) {
-      prepareAssistantImage(true);
-    } else {
-      updateAssistantOverlay("已关闭自动下载。现在默认使用“复制当前图片 → 粘贴 → 验证”的流程。");
+    if (!imageAssistantState) return;
+    const action = event.target?.dataset?.action;
+    if (action === "auto-download") {
+      imageAssistantState.autoDownload = event.target.checked;
+      localStorage.setItem("bsAssistantAutoDownload", String(imageAssistantState.autoDownload));
+      if (imageAssistantState.autoDownload) {
+        prepareAssistantImage(true);
+      } else {
+        updateAssistantOverlay("已关闭自动下载。现在默认使用“复制当前图片 → 粘贴 → 验证”的流程。");
+      }
     }
+    if (action === "download-save-as") {
+      imageAssistantState.downloadSaveAs = event.target.checked;
+      chrome.storage.local.set({ downloadSaveAs: imageAssistantState.downloadSaveAs });
+      updateAssistantOverlay(imageAssistantState.downloadSaveAs
+        ? "已开启每次弹出“另存为”，下载时可以选择任意位置。"
+        : `已关闭“另存为”，文件将保存到 Downloads/${imageAssistantState.downloadFolder}/`);
+    }
+  });
+
+  overlay.addEventListener("focusout", (event) => {
+    if (event.target?.dataset?.action !== "download-folder" || !imageAssistantState) return;
+    imageAssistantState.downloadFolder = sanitizeDownloadFolder(event.target.value);
+    event.target.value = imageAssistantState.downloadFolder;
+    chrome.storage.local.set({ downloadFolder: imageAssistantState.downloadFolder });
+    updateAssistantOverlay(`下载子文件夹已保存：Downloads/${imageAssistantState.downloadFolder}/`);
   });
 
   prepareAssistantImage(imageAssistantState.autoDownload, true);

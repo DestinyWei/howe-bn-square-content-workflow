@@ -25,6 +25,18 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
+function sanitizeDownloadFolder(value) {
+  const normalized = String(value || "binance-square-assets")
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "")
+    .split("/")
+    .filter((part) => part && part !== "." && part !== "..")
+    .map((part) => part.replace(/[<>:"|?*\u0000-\u001f]/g, "-").trim())
+    .filter(Boolean)
+    .join("/");
+  return normalized || "binance-square-assets";
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "FETCH_ARTICLE_ASSET") {
     fetch(message.url, { credentials: "omit", cache: "force-cache" })
@@ -46,15 +58,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   const index = Number(message.index) || 1;
   const kind = message.kind === "cover" ? "cover" : "image";
   const extension = extensionFor(message.url);
+  const folder = sanitizeDownloadFolder(message.folder);
   const filename = kind === "cover"
-    ? `binance-square-assets/00-cover.${extension}`
-    : `binance-square-assets/${String(index).padStart(2, "0")}-image.${extension}`;
+    ? `${folder}/00-cover.${extension}`
+    : `${folder}/${String(index).padStart(2, "0")}-image.${extension}`;
 
   chrome.downloads.download({
     url: message.url,
     filename,
     conflictAction: "overwrite",
-    saveAs: false
+    saveAs: Boolean(message.saveAs)
   }).then((downloadId) => sendResponse({ ok: true, downloadId, filename }))
     .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
   return true;

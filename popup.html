@@ -8,6 +8,13 @@
     body { width: 330px; margin: 0; padding: 18px; color: #eaecef; background: #0b0e11; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     h1 { margin: 0 0 4px; font-size: 18px; }
     p { margin: 0 0 14px; color: #929aa5; }
+    label { display: block; margin: 10px 0; color: #c9ced5; font-size: 12px; }
+    input[type="text"] { box-sizing: border-box; width: 100%; margin-top: 5px; padding: 9px; border: 1px solid #2b3139; border-radius: 7px; color: #eaecef; background: #181a20; }
+    .check { display: flex; align-items: center; gap: 7px; }
+    .check input { margin: 0; }
+    .settings { margin: 12px 0; padding: 10px; border: 1px solid #2b3139; border-radius: 8px; background: #11151b; }
+    .settings strong { display: block; margin-bottom: 4px; color: #f0b90b; }
+    .hint { font-size: 11px; color: #727a85; }
     button { width: 100%; margin: 6px 0; padding: 11px 12px; border: 1px solid #2b3139; border-radius: 8px; color: #eaecef; background: #181a20; font-weight: 650; cursor: pointer; }
     button.primary { border-color: #f0b90b; color: #181a20; background: #f0b90b; }
     #status { min-height: 42px; margin-top: 12px; padding: 10px; border-radius: 8px; color: #b7bdc6; background: #181a20; white-space: pre-wrap; }
@@ -20,6 +27,15 @@
   <button id="formatter">打开排版器</button>
   <button id="fill">把已保存版本填入当前币安草稿</button>
   <button id="images">开始 / 继续批量插图助手</button>
+  <section class="settings">
+    <strong>图片下载设置</strong>
+    <label>下载目录下的子文件夹
+      <input id="download-folder" type="text" placeholder="binance-square-assets">
+    </label>
+    <label class="check"><input id="download-save-as" type="checkbox"> 每次弹出“另存为”选择位置</label>
+    <div class="hint">Chrome 只能静默保存到默认下载目录下的子文件夹；勾选“另存为”后可选择其他位置。</div>
+    <button id="save-download-settings">保存下载设置</button>
+  </section>
   <div id="status">等待操作</div>
   <script src="popup.js"></script>
 </body>

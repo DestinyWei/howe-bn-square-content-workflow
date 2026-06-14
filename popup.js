@@ -1,7 +1,20 @@
 const statusBox = document.querySelector("#status");
+const downloadFolderInput = document.querySelector("#download-folder");
+const downloadSaveAsInput = document.querySelector("#download-save-as");
 
 function setStatus(message) {
   statusBox.textContent = message;
+}
+
+function sanitizeDownloadFolder(value) {
+  return String(value || "binance-square-assets")
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "")
+    .split("/")
+    .filter((part) => part && part !== "." && part !== "..")
+    .map((part) => part.replace(/[<>:"|?*\u0000-\u001f]/g, "-").trim())
+    .filter(Boolean)
+    .join("/") || "binance-square-assets";
 }
 
 async function activeTab() {
@@ -34,6 +47,22 @@ async function latestDraft() {
   if (!fromClipboard) return binanceDraft;
   return new Date(fromClipboard.updatedAt || 0) > new Date(binanceDraft.updatedAt || 0) ? fromClipboard : binanceDraft;
 }
+
+async function loadDownloadSettings() {
+  const settings = await chrome.storage.local.get(["downloadFolder", "downloadSaveAs"]);
+  downloadFolderInput.value = settings.downloadFolder || "binance-square-assets";
+  downloadSaveAsInput.checked = Boolean(settings.downloadSaveAs);
+}
+
+document.querySelector("#save-download-settings").addEventListener("click", async () => {
+  const downloadFolder = sanitizeDownloadFolder(downloadFolderInput.value);
+  const downloadSaveAs = downloadSaveAsInput.checked;
+  downloadFolderInput.value = downloadFolder;
+  await chrome.storage.local.set({ downloadFolder, downloadSaveAs });
+  setStatus(downloadSaveAs
+    ? `下载设置已保存。\n每次下载都会弹出“另存为”。`
+    : `下载设置已保存。\n文件将保存到 Downloads/${downloadFolder}/`);
+});
 
 document.querySelector("#formatter").addEventListener("click", openFormatter);
 
@@ -95,3 +124,5 @@ document.querySelector("#images").addEventListener("click", async () => {
     setStatus(error.message || String(error));
   }
 });
+
+loadDownloadSettings();
