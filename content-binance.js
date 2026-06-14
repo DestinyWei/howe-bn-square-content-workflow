@@ -92,6 +92,14 @@ function editablePlainText(element) {
   return element.innerText || element.textContent || "";
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
 function normalizedPlainText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
@@ -177,6 +185,48 @@ function insertPlainTextEditable(element, value) {
   dispatchInput(element, "insertText");
 }
 
+function tweetTextToHtml(value) {
+  const paragraphs = String(value || "")
+    .replace(/\r/g, "")
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+  return paragraphs.map((paragraph, index) => {
+    const lines = paragraph.split("\n").map((line) => escapeHtml(line));
+    const block = `<div>${lines.join("<br>") || "<br>"}</div>`;
+    return index < paragraphs.length - 1 ? `${block}<div><br></div>` : block;
+  }).join("") || "<div><br></div>";
+}
+
+function insertPostTextEditable(element, value) {
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+    setTextControl(element, value);
+    return;
+  }
+  const html = tweetTextToHtml(value);
+  selectEditableContents(element);
+  try {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/plain", value);
+    clipboardData.setData("text/html", html);
+    element.dispatchEvent(new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData
+    }));
+  } catch {}
+  if (editablePlainText(element).includes(value.slice(0, 20))) {
+    dispatchInput(element, "insertFromPaste");
+    return;
+  }
+
+  selectEditableContents(element);
+  document.execCommand("delete", false);
+  const inserted = document.execCommand("insertHTML", false, html);
+  if (!inserted) element.innerHTML = html;
+  dispatchInput(element, "insertFromPaste");
+}
+
 function replaceEditable(element, value, rich) {
   if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
     setTextControl(element, value);
@@ -257,7 +307,7 @@ async function fillPostDraft(draft) {
     throw new Error(`未找到币安广场推文输入框。检测到 ${editables.length} 个可编辑控件：${JSON.stringify(describeEditables(editables))}`);
   }
   const text = normalizeTweetHandles(draft.text || "");
-  insertPlainTextEditable(composer, text);
+  insertPostTextEditable(composer, text);
   await sleep(120);
   const refreshedComposer = findPostComposer(editableElements()) || composer;
   const scope = postComposerScope();
