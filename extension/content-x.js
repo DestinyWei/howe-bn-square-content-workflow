@@ -12,6 +12,10 @@ function cleanMultilineText(value) {
     .trim();
 }
 
+function normalizedForCompare(value) {
+  return cleanText(value).replace(/\s+/g, "");
+}
+
 function normalizeTweetHandles(value) {
   const lines = String(value || "")
     .replace(/\r/g, "")
@@ -192,6 +196,75 @@ function extractBlocks(bodyRoot) {
   return [...bodyRoot.children].map(blockFromElement).filter(Boolean);
 }
 
+function articleUiLine(line) {
+  return /^(Article|Follow|Following|Show more|Show translation|Post your reply|Reply|Boost|Home|Explore|Notifications|Bookmarks|Articles|Profile|More|Relevant people|What.s happening|Terms of Service|Privacy Policy|Cookie Policy|Accessibility|Ads info)$/i.test(line) ||
+    /^@\w{1,20}$/.test(line) ||
+    /^\d+(\.\d+)?[KMB]?\s*(Views|次浏览|Likes|点赞|Retweets|转帖|Replies|回复)$/i.test(line) ||
+    /^[·•]\s*/.test(line) ||
+    /^\d{1,2}:\d{2}\s*(AM|PM)?/i.test(line);
+}
+
+function articleStopLine(line) {
+  return /^(Show more|Post your reply|Relevant people|What.s happening|Terms of Service|Privacy Policy|Cookie Policy|Accessibility|Ads info)$/i.test(line);
+}
+
+function titleLikeLine(line) {
+  return line.length >= 6 && line.length <= 120 && /[\u4e00-\u9fffA-Za-z]/.test(line);
+}
+
+function visibleFallbackBlocks(main, title) {
+  const rawLines = String(main.innerText || "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim());
+  const lines = rawLines.filter(Boolean);
+  if (!lines.length) return [];
+
+  const titleKey = normalizedForCompare(title);
+  let startIndex = titleKey
+    ? lines.findIndex((line) => normalizedForCompare(line) === titleKey)
+    : -1;
+  if (startIndex < 0) {
+    startIndex = lines.findIndex((line) => titleLikeLine(line) && !articleUiLine(line));
+  }
+  if (startIndex < 0) return [];
+
+  const fallback = [];
+  const seen = new Set();
+  const pushBlock = (type, text) => {
+    const cleaned = cleanText(text);
+    const key = normalizedForCompare(cleaned);
+    if (!cleaned || seen.has(key)) return;
+    seen.add(key);
+    fallback.push({
+      type,
+      text: cleaned,
+      html: type === "heading" ? `<h2>${escapeHtml(cleaned)}</h2>` : `<p>${escapeHtml(cleaned)}</p>`
+    });
+  };
+
+  for (let index = startIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (articleStopLine(line)) break;
+    if (articleUiLine(line)) continue;
+    if (line.length < 12 && !/[。！？.!?]$/.test(line)) continue;
+    pushBlock("paragraph", line);
+  }
+  return fallback.length ? fallback : [];
+}
+
+function sourceTextForBlocks(blocks) {
+  return cleanText(blocks.map((block) => block.text).join(" "));
+}
+
+function coverageFor(sourceText, blocks) {
+  const extractedText = sourceTextForBlocks(blocks);
+  return {
+    extractedText,
+    coverage: sourceText.length ? extractedText.length / sourceText.length : 0
+  };
+}
+
 function extractArticle() {
   const main = document.querySelector("main");
   if (!main) throw new Error("页面中没有找到文章主体。");
@@ -200,7 +273,25 @@ function extractArticle() {
   if (!bodyRoot) throw new Error("无法定位 X Article 正文块。");
 
   const title = extractTitle(main, bodyRoot);
-  const blocks = extractBlocks(bodyRoot);
+  let blocks = extractBlocks(bodyRoot);
+  const sourceText = cleanText(bodyRoot.innerText);
+  let diagnosticSourceText = sourceText;
+  let { extractedText, coverage } = coverageFor(sourceText, blocks);
+  let extractionMode = "structured";
+  if (coverage < 0.98) {
+    const fallbackBlocks = visibleFallbackBlocks(main, title);
+    const fallbackSourceText = sourceTextForBlocks(fallbackBlocks);
+    const fallbackCoverage = fallbackSourceText.length && fallbackBlocks.length
+      ? coverageFor(fallbackSourceText, fallbackBlocks).coverage
+      : 0;
+    if (fallbackBlocks.length && fallbackCoverage > coverage) {
+      blocks = fallbackBlocks;
+      diagnosticSourceText = fallbackSourceText;
+      extractedText = fallbackSourceText;
+      coverage = fallbackCoverage;
+      extractionMode = "visible-text-fallback";
+    }
+  }
   const bodyImages = blocks.filter((block) => block.type === "image").map((block) => ({
     url: block.url,
     alt: block.alt
@@ -212,10 +303,6 @@ function extractArticle() {
       return (image.naturalWidth || 0) >= 600 && (image.naturalHeight || 0) >= 300 && !bodyImageUrls.has(url);
     });
 
-  const sourceText = cleanText(bodyRoot.innerText);
-  const extractedText = cleanText(blocks.map((block) => block.text).join(" "));
-  const coverage = sourceText.length ? extractedText.length / sourceText.length : 0;
-
   return {
     version: 2,
     source: "x-article",
@@ -226,10 +313,11 @@ function extractArticle() {
     assets: bodyImages,
     blocks,
     diagnostics: {
-      sourceCharacters: sourceText.length,
+      sourceCharacters: diagnosticSourceText.length,
       extractedCharacters: extractedText.length,
       coverage: Number(coverage.toFixed(4)),
-      blockCount: blocks.length
+      blockCount: blocks.length,
+      extractionMode
     }
   };
 }
