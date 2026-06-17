@@ -354,9 +354,197 @@ function coverageFor(sourceText, blocks) {
   };
 }
 
-function extractArticle() {
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function metricLikeLine(text) {
+  const cleaned = cleanText(text);
+  return /^#?\d[\d,.]*$/.test(cleaned) ||
+    /^(\d+(\.\d+)?[KMB]?\s+){1,5}\d+(\.\d+)?[KMB]?$/i.test(cleaned) ||
+    /\b(Views?|Relevant|View quotes?|Reply|Repost|Like|Bookmark|Share)\b/i.test(cleaned);
+}
+
+function findTargetStatusArticle(main) {
+  const tweetId = currentStatusId();
+  const articles = [...main.querySelectorAll("article")];
+  if (!articles.length) return null;
+  if (tweetId) {
+    const matched = articles.find((article) =>
+      [...article.querySelectorAll("a[href*='/status/']")]
+        .some((link) => link.href.includes(`/status/${tweetId}`))
+    );
+    if (matched) return matched;
+  }
+  return articles[0];
+}
+
+function draftTextBlocks(article) {
+  const root = article.querySelector(".public-DraftEditor-content") || article;
+  return [...root.querySelectorAll("[data-block='true']")]
+    .map((element) => ({
+      element,
+      text: cleanText(element.innerText),
+      top: elementTop(element)
+    }))
+    .filter((item) => item.text);
+}
+
+function extractDraftStatusTitle(article, firstBlockTop) {
+  const titleFromDocument = document.title.match(/on X:\s*"([^"]+)"/)?.[1];
+  if (titleFromDocument) return cleanText(titleFromDocument);
+
+  const articleTop = elementTop(article);
+  const candidates = [...article.querySelectorAll("[dir='auto'], div, span")]
+    .map((element) => {
+      const rect = element.getBoundingClientRect();
+      const text = cleanText(element.innerText);
+      const style = window.getComputedStyle(element);
+      return {
+        text,
+        top: rect.top + window.scrollY,
+        height: rect.height,
+        fontSize: Number.parseFloat(style.fontSize) || 0,
+        fontWeight: Number.parseInt(style.fontWeight, 10) || 400
+      };
+    })
+    .filter((item) =>
+      item.top > articleTop + 40 &&
+      item.top < firstBlockTop &&
+      item.height > 16 &&
+      item.height < 100 &&
+      item.text.length >= 4 &&
+      item.text.length <= 120 &&
+      /[\u4e00-\u9fffA-Za-z]/.test(item.text) &&
+      !item.text.includes("@") &&
+      !/^#/.test(item.text) &&
+      !articleUiLine(item.text) &&
+      !metricLikeLine(item.text)
+    );
+
+  const seen = new Set();
+  const unique = candidates.filter((item) => {
+    const key = normalizedForCompare(item.text);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  unique.sort((a, b) =>
+    b.fontSize - a.fontSize ||
+    b.fontWeight - a.fontWeight ||
+    b.text.length - a.text.length ||
+    a.top - b.top
+  );
+  return unique[0]?.text || "未命名 X Article";
+}
+
+function draftStatusImages(article) {
+  const seen = new Set();
+  return [...article.querySelectorAll("img[src*='pbs.twimg.com/media']")]
+    .map((image) => {
+      const url = originalMediaUrl(image.currentSrc || image.src);
+      return {
+        image,
+        url,
+        alt: cleanText(image.alt),
+        top: elementTop(image)
+      };
+    })
+    .filter((item) => {
+      if (!item.url || seen.has(item.url)) return false;
+      seen.add(item.url);
+      return isArticleImage(item.image);
+    })
+    .sort((a, b) => a.top - b.top);
+}
+
+function isDraftStatusArticle(main, article) {
+  if (!article) return false;
+  if (directTweetText(article)) return false;
+  if (main.querySelector("h1.longform-header-one, h2.longform-header-two, h3.longform-header-three")) return false;
+  return draftTextBlocks(article).length >= 3;
+}
+
+async function hydrateDraftStatusMedia(article) {
+  const originalX = window.scrollX;
+  const originalY = window.scrollY;
+  let previousCount = -1;
+  try {
+    for (let pass = 0; pass < 3; pass += 1) {
+      const top = elementTop(article);
+      const bottom = top + article.getBoundingClientRect().height;
+      const distance = Math.max(window.innerHeight, bottom - top);
+      const steps = Math.min(28, Math.max(10, Math.ceil(distance / Math.max(700, window.innerHeight * 0.85))));
+      for (let index = 0; index <= steps; index += 1) {
+        const ratio = steps ? index / steps : 1;
+        const y = Math.max(0, top + distance * ratio - window.innerHeight * 0.2);
+        window.scrollTo(originalX, y);
+        await delay(180);
+      }
+      const count = draftStatusImages(article).length;
+      if (count === previousCount) break;
+      previousCount = count;
+    }
+  } finally {
+    window.scrollTo(originalX, originalY);
+    await delay(160);
+  }
+}
+
+function extractDraftStatusArticle(main) {
+  const article = findTargetStatusArticle(main);
+  if (!isDraftStatusArticle(main, article)) return null;
+  const textBlocks = draftTextBlocks(article);
+
+  const firstBlockTop = textBlocks[0].top;
+  const title = extractDraftStatusTitle(article, firstBlockTop);
+  const imageItems = draftStatusImages(article);
+  const coverItem = imageItems.find((item) => item.top < firstBlockTop);
+  const bodyImageItems = imageItems.filter((item) => !coverItem || item.url !== coverItem.url);
+  const blocks = textBlocks.map((item) => ({
+    type: "paragraph",
+    text: item.text,
+    top: item.top,
+    html: `<p>${inlineHtml(item.element)}</p>`
+  }));
+  const mergedBlocks = insertImageBlocksByPosition(blocks, bodyImageItems);
+  const sourceText = sourceTextForBlocks(blocks);
+  const { extractedText, coverage } = coverageFor(sourceText, mergedBlocks);
+
+  return {
+    version: 3,
+    source: "x-article",
+    sourceUrl: location.href,
+    extractedAt: new Date().toISOString(),
+    title,
+    cover: coverItem?.url || "",
+    assets: bodyImageItems.map((item) => ({
+      url: item.url,
+      alt: item.alt
+    })),
+    blocks: mergedBlocks,
+    diagnostics: {
+      sourceCharacters: sourceText.length,
+      extractedCharacters: extractedText.length,
+      coverage: Number(coverage.toFixed(4)),
+      blockCount: mergedBlocks.length,
+      extractionMode: "draft-status-article"
+    }
+  };
+}
+
+async function extractArticle() {
   const main = document.querySelector("main");
   if (!main) throw new Error("页面中没有找到文章主体。");
+
+  const statusArticle = findTargetStatusArticle(main);
+  if (isDraftStatusArticle(main, statusArticle)) {
+    await hydrateDraftStatusMedia(statusArticle);
+  }
+
+  const draftStatusArticle = extractDraftStatusArticle(main);
+  if (draftStatusArticle) return draftStatusArticle;
 
   const bodyRoot = findBodyRoot(main);
   if (!bodyRoot) throw new Error("无法定位 X Article 正文块。");
@@ -499,17 +687,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return;
   }
   if (message?.type !== "EXTRACT_X_ARTICLE") return;
-  try {
-    const article = extractArticle();
-    if (article.diagnostics.coverage < 0.98) {
-      sendResponse({
-        ok: false,
-        error: `正文提取覆盖率仅 ${(article.diagnostics.coverage * 100).toFixed(1)}%，已停止导入以避免漏文。`
-      });
-      return;
+  (async () => {
+    try {
+      const article = await extractArticle();
+      if (article.diagnostics.coverage < 0.98) {
+        sendResponse({
+          ok: false,
+          error: `正文提取覆盖率仅 ${(article.diagnostics.coverage * 100).toFixed(1)}%，已停止导入以避免漏文。`
+        });
+        return;
+      }
+      sendResponse({ ok: true, article });
+    } catch (error) {
+      sendResponse({ ok: false, error: error.message || String(error) });
     }
-    sendResponse({ ok: true, article });
-  } catch (error) {
-    sendResponse({ ok: false, error: error.message || String(error) });
-  }
+  })();
+  return true;
 });

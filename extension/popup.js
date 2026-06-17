@@ -159,7 +159,7 @@ document.querySelector("#extract").addEventListener("click", async () => {
     if (!tab?.id || !/^https:\/\/(x|twitter)\.com\//.test(tab.url || "")) {
       throw new Error("请先打开一篇 X Article。");
     }
-    setStatus("正在读取当前 X Article…", "working");
+    setStatus("正在读取当前 X Article，并加载懒加载图片…", "working");
     const response = await sendMessageWithInjection(tab, { type: "EXTRACT_X_ARTICLE" }, "content-x.js");
     if (!response?.ok) throw new Error(response?.error || "未能识别文章内容。");
     await chrome.storage.local.set({ sourceArticle: response.article });
