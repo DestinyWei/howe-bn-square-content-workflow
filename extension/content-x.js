@@ -136,10 +136,16 @@ function inlineHtml(node) {
   return result;
 }
 
+const ARTICLE_IMAGE_MIN_WIDTH = 600;
+const ARTICLE_IMAGE_MIN_HEIGHT = 240;
+
+function isArticleImage(image) {
+  return (image.naturalWidth || 0) >= ARTICLE_IMAGE_MIN_WIDTH &&
+    (image.naturalHeight || 0) >= ARTICLE_IMAGE_MIN_HEIGHT;
+}
+
 function largeImageIn(element) {
-  return [...element.querySelectorAll("img")].find((image) =>
-    (image.naturalWidth || 0) >= 600 && (image.naturalHeight || 0) >= 300
-  ) || null;
+  return [...element.querySelectorAll("img")].find(isArticleImage) || null;
 }
 
 function largeArticleImages(main) {
@@ -158,7 +164,7 @@ function largeArticleImages(main) {
     .filter((item) => {
       if (!item.url || seen.has(item.url)) return false;
       seen.add(item.url);
-      return (item.image.naturalWidth || 0) >= 600 && (item.image.naturalHeight || 0) >= 300;
+      return isArticleImage(item.image);
     })
     .sort((a, b) => a.top - b.top);
 }
@@ -218,13 +224,23 @@ function blockFromElement(element) {
   const image = largeImageIn(element);
   if (image) {
     const url = originalMediaUrl(image.currentSrc || image.src);
-    return {
+    const imageBlock = {
       type: "image",
       text: "",
       url,
       alt: cleanText(image.alt),
+      top: elementTop(image),
       html: `<img src="${escapeHtml(url)}" alt="${escapeHtml(image.alt)}">`
     };
+    const text = cleanText(element.innerText);
+    if (!text) return imageBlock;
+    const textBlock = {
+      type: "paragraph",
+      text,
+      top: elementTop(element),
+      html: `<p>${inlineHtml(element)}</p>`
+    };
+    return imageBlock.top < textBlock.top ? [imageBlock, textBlock] : [textBlock, imageBlock];
   }
 
   if (element.querySelector("[role='separator']") || element.matches("hr")) {
@@ -237,7 +253,10 @@ function blockFromElement(element) {
 }
 
 function extractBlocks(bodyRoot) {
-  return [...bodyRoot.children].map(blockFromElement).filter(Boolean);
+  return [...bodyRoot.children].flatMap((element) => {
+    const block = blockFromElement(element);
+    return Array.isArray(block) ? block : [block];
+  }).filter(Boolean);
 }
 
 function articleUiLine(line) {
@@ -381,7 +400,7 @@ function extractArticle() {
   const coverImage = cover ? null : [...main.querySelectorAll("img")]
     .find((image) => {
       const url = originalMediaUrl(image.currentSrc || image.src);
-      return (image.naturalWidth || 0) >= 600 && (image.naturalHeight || 0) >= 300 && !bodyImageUrls.has(url);
+      return isArticleImage(image) && !bodyImageUrls.has(url);
     });
   if (!cover && coverImage) cover = originalMediaUrl(coverImage.currentSrc || coverImage.src);
 
