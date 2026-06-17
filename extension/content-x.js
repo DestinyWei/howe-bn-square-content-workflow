@@ -163,6 +163,29 @@ function largeArticleImages(main) {
     .sort((a, b) => a.top - b.top);
 }
 
+function elementTop(element) {
+  return element.getBoundingClientRect().top + window.scrollY;
+}
+
+function textPositionCandidates(main) {
+  return [...main.querySelectorAll("h1,h2,h3,p,li,blockquote,[dir='auto'],[data-testid='tweetText']")]
+    .map((element) => ({
+      text: cleanText(element.innerText),
+      top: elementTop(element)
+    }))
+    .filter((item) => item.text.length >= 6)
+    .sort((a, b) => a.text.length - b.text.length);
+}
+
+function topForTextLine(candidates, line) {
+  const key = normalizedForCompare(line);
+  if (!key) return null;
+  const exact = candidates.find((candidate) => normalizedForCompare(candidate.text) === key);
+  if (exact) return exact.top;
+  const containing = candidates.find((candidate) => normalizedForCompare(candidate.text).includes(key));
+  return containing ? containing.top : null;
+}
+
 function blockFromElement(element) {
   const heading = element.matches("h1,h2,h3") ? element : element.querySelector("h1,h2,h3");
   if (heading) {
@@ -252,16 +275,19 @@ function visibleFallbackBlocks(main, title) {
 
   const fallback = [];
   const seen = new Set();
-  const pushBlock = (type, text) => {
+  const candidates = textPositionCandidates(main);
+  const pushBlock = (type, text, top = null) => {
     const cleaned = cleanText(text);
     const key = normalizedForCompare(cleaned);
     if (!cleaned || seen.has(key)) return;
     seen.add(key);
-    fallback.push({
+    const block = {
       type,
       text: cleaned,
       html: type === "heading" ? `<h2>${escapeHtml(cleaned)}</h2>` : `<p>${escapeHtml(cleaned)}</p>`
-    });
+    };
+    if (Number.isFinite(top)) block.top = top;
+    fallback.push(block);
   };
 
   for (let index = startIndex + 1; index < lines.length; index += 1) {
@@ -269,9 +295,32 @@ function visibleFallbackBlocks(main, title) {
     if (articleStopLine(line)) break;
     if (articleUiLine(line)) continue;
     if (line.length < 12 && !/[。！？.!?]$/.test(line)) continue;
-    pushBlock("paragraph", line);
+    pushBlock("paragraph", line, topForTextLine(candidates, line));
   }
   return fallback.length ? fallback : [];
+}
+
+function imageBlockFromItem(item) {
+  return {
+    type: "image",
+    text: "",
+    url: item.url,
+    alt: item.alt || "",
+    top: item.top,
+    html: `<img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.alt || "")}">`
+  };
+}
+
+function insertImageBlocksByPosition(blocks, images) {
+  const result = blocks.slice();
+  images.forEach((image) => {
+    const block = imageBlockFromItem(image);
+    const insertionIndex = result.reduce((bestIndex, item, index) => (
+      Number.isFinite(item.top) && item.top < image.top ? index : bestIndex
+    ), -1);
+    result.splice(insertionIndex + 1, 0, block);
+  });
+  return result;
 }
 
 function sourceTextForBlocks(blocks) {
@@ -321,7 +370,9 @@ function extractArticle() {
   if (extractionMode === "visible-text-fallback") {
     const articleImages = largeArticleImages(main);
     cover = articleImages[0]?.url || "";
-    bodyImages = articleImages.slice(1).map((item) => ({
+    const fallbackBodyImages = articleImages.slice(1);
+    blocks = insertImageBlocksByPosition(blocks, fallbackBodyImages);
+    bodyImages = fallbackBodyImages.map((item) => ({
       url: item.url,
       alt: item.alt
     }));
