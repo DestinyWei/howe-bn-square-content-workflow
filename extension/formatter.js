@@ -220,9 +220,17 @@ function runChecks() {
 }
 
 function renderAssets() {
-  assetsList.innerHTML = assets.length
-    ? assets.map((asset, index) => `<li><strong>${String(index + 1).padStart(2, "0")}-image</strong><br>${escapeHtml(asset.url || "缺少 URL")}</li>`).join("")
-    : "<li>尚未记录正文图片。</li>";
+  const cover = sanitizeUrl(coverInput.value.trim());
+  const lines = [];
+  if (cover) {
+    lines.push(`<li><strong>00-cover</strong><br>${escapeHtml(cover)}</li>`);
+  }
+  if (assets.length) {
+    lines.push(...assets.map((asset, index) => `<li><strong>${String(index + 1).padStart(2, "0")}-image</strong><br>${escapeHtml(asset.url || "缺少 URL")}</li>`));
+  } else {
+    lines.push(`<li>${cover ? "已识别封面，暂无正文图片。" : "尚未记录封面或正文图片。"}</li>`);
+  }
+  assetsList.innerHTML = lines.join("");
 }
 
 function refresh() {
