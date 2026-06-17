@@ -48,6 +48,14 @@
 
 本项目的 zip 安装包适合放在 GitHub Releases。Packages 更适合 npm 包、Docker 镜像等包管理场景，不适合这个 Chrome 扩展 zip。
 
+发布规则：
+
+- 只要修改 `extension/` 内的扩展代码或用户可见行为，就同步更新 `extension/manifest.json` 的版本号。
+- 小修复使用 patch 版本，例如 `1.0.0 -> 1.0.1`。
+- 一批小功能或明显功能增强使用 minor 版本，例如 `1.0.x -> 1.1.0`。
+- 破坏兼容性或大范围重构使用 major 版本，例如 `1.x.x -> 2.0.0`。
+- 每次发布 Release 前都运行本地构建和校验。
+
 本地构建：
 
 ```bash
