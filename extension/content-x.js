@@ -142,6 +142,27 @@ function largeImageIn(element) {
   ) || null;
 }
 
+function largeArticleImages(main) {
+  const seen = new Set();
+  return [...main.querySelectorAll("article img")]
+    .map((image) => {
+      const url = originalMediaUrl(image.currentSrc || image.src);
+      const rect = image.getBoundingClientRect();
+      return {
+        image,
+        url,
+        alt: cleanText(image.alt),
+        top: rect.top + window.scrollY
+      };
+    })
+    .filter((item) => {
+      if (!item.url || seen.has(item.url)) return false;
+      seen.add(item.url);
+      return (item.image.naturalWidth || 0) >= 600 && (item.image.naturalHeight || 0) >= 300;
+    })
+    .sort((a, b) => a.top - b.top);
+}
+
 function blockFromElement(element) {
   const heading = element.matches("h1,h2,h3") ? element : element.querySelector("h1,h2,h3");
   if (heading) {
@@ -292,16 +313,26 @@ function extractArticle() {
       extractionMode = "visible-text-fallback";
     }
   }
-  const bodyImages = blocks.filter((block) => block.type === "image").map((block) => ({
+  let bodyImages = blocks.filter((block) => block.type === "image").map((block) => ({
     url: block.url,
     alt: block.alt
   }));
+  let cover = "";
+  if (extractionMode === "visible-text-fallback") {
+    const articleImages = largeArticleImages(main);
+    cover = articleImages[0]?.url || "";
+    bodyImages = articleImages.slice(1).map((item) => ({
+      url: item.url,
+      alt: item.alt
+    }));
+  }
   const bodyImageUrls = new Set(bodyImages.map((asset) => asset.url));
-  const coverImage = [...main.querySelectorAll("img")]
+  const coverImage = cover ? null : [...main.querySelectorAll("img")]
     .find((image) => {
       const url = originalMediaUrl(image.currentSrc || image.src);
       return (image.naturalWidth || 0) >= 600 && (image.naturalHeight || 0) >= 300 && !bodyImageUrls.has(url);
     });
+  if (!cover && coverImage) cover = originalMediaUrl(coverImage.currentSrc || coverImage.src);
 
   return {
     version: 2,
@@ -309,7 +340,7 @@ function extractArticle() {
     sourceUrl: location.href,
     extractedAt: new Date().toISOString(),
     title,
-    cover: coverImage ? originalMediaUrl(coverImage.currentSrc || coverImage.src) : "",
+    cover,
     assets: bodyImages,
     blocks,
     diagnostics: {
