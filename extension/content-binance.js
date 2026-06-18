@@ -642,8 +642,21 @@ function isPlaceholderElement(element) {
   return Number.isInteger(placeholderNumber(element));
 }
 
+function normalizedEditorText(element) {
+  return (element?.textContent || "")
+    .replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isEmptyEditorBlock(element) {
+  if (!element) return false;
+  if (normalizedEditorText(element)) return false;
+  return !element.querySelector("img,video,canvas,svg,input,textarea,select,button,[contenteditable='false']");
+}
+
 function ignorableBetweenMediaAndPlaceholder(element) {
-  const text = (element?.textContent || "").replace(/\s+/g, " ").trim();
+  const text = normalizedEditorText(element);
   if (!text) return true;
   return text === "添加说明" || /^Crop Width: 原图(?: 添加说明)?$/.test(text);
 }
@@ -658,12 +671,42 @@ function mediaInsidePlaceholder(editor, placeholder) {
   return mediaNodes(editor).find((media) => placeholder.contains(media) && mediaIsLoaded(media)) || null;
 }
 
+function cleanEmptyBlocksBetweenMediaAndPlaceholder(editor, placeholder) {
+  const topNode = topLevelNode(editor, placeholder);
+  if (!topNode) return 0;
+
+  const removable = [];
+  let current = topNode.previousElementSibling;
+  let scanned = 0;
+  while (current && scanned < 80) {
+    if (isPlaceholderElement(current)) break;
+
+    const media = mediaInTopLevelNode(editor, current);
+    if (media) {
+      removable.forEach((element) => element.remove());
+      if (removable.length) dispatchInput(editor, "deleteContentBackward");
+      return removable.length;
+    }
+
+    if (isEmptyEditorBlock(current)) {
+      removable.push(current);
+    } else if (!ignorableBetweenMediaAndPlaceholder(current)) {
+      break;
+    }
+
+    current = current.previousElementSibling;
+    scanned += 1;
+  }
+  return 0;
+}
+
 function mediaBeforePlaceholder(editor, placeholder) {
+  cleanEmptyBlocksBetweenMediaAndPlaceholder(editor, placeholder);
   const topNode = topLevelNode(editor, placeholder);
   if (!topNode) return null;
   let current = topNode.previousElementSibling;
   let skipped = 0;
-  while (current && skipped <= 6) {
+  while (current && skipped < 80) {
     if (isPlaceholderElement(current)) return null;
     const media = mediaInTopLevelNode(editor, current);
     if (media) return media;
