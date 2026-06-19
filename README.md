@@ -70,6 +70,8 @@ dist/binance-square-workflow-v版本号.zip
 
 ## 版本说明
 
+详细 Release note 和发布操作记录见 [CHANGELOG.md](CHANGELOG.md)。
+
 ### v1.1.0
 
 `v1.1.0` 整合了 `v1.0.1` 到 `v1.0.8` 的修复和小功能更新，是当前推荐安装版本。
