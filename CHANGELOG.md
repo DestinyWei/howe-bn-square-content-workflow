@@ -44,8 +44,11 @@ Release 链接：https://github.com/DestinyWei/howe-bn-square-content-workflow/r
   - `node --check extension/formatter.js`
   - `python3 -m json.tool extension/manifest.json`
   - `git diff --check`
-- 提交并推送：待补充。
-- 创建 GitHub Release：待补充。
+- 提交并推送：`bef7df4 Fix image paste anchor placement`。
+- 创建 GitHub Release：`v1.1.3`，标题为“v1.1.3 — 修复 H2 后续标题导致的插图插入点失败”。
+- 上传 Release 安装包：`dist/binance-square-workflow-v1.1.3.zip`。
+- 确认 Release 链接：https://github.com/DestinyWei/howe-bn-square-content-workflow/releases/tag/v1.1.3
+- 确认安装包 SHA256：`0e6129655e299e852b3dfb3502a870480592a096fc47588f779f4bb695e84f20`。
 
 ## v1.1.2 — 修复临时上传块被提前移动导致插图失败
 
