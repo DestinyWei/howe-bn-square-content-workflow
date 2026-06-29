@@ -2,6 +2,47 @@
 
 本文件用于记录每次 GitHub Release 的功能说明、发布操作和后续维护备注。
 
+## v1.1.1 — 修复批量插图落点纠偏
+
+发布日期：2026-06-29
+
+Release 链接：https://github.com/DestinyWei/howe-bn-square-content-workflow/releases/tag/v1.1.1
+
+安装包：
+
+- `binance-square-workflow-v1.1.1.zip`
+
+### 版本定位
+
+`v1.1.1` 是批量插图助手的 patch 修复版本，用于解决币安编辑器把新上传图片先插到正文末尾时，助手一直无法判定插入成功的问题。
+
+### 问题原因
+
+币安编辑器的图片上传流程会先插入一个临时图片块，再异步上传并替换为最终图片。旧逻辑只有在图片已经加载完成后才会尝试把错位图片纠偏到对应 `正文图片 N` 占位符前。
+
+如果币安先把临时图片块插到正文末尾，助手会一直等待“目标占位符附近出现已加载图片”。实际图片已经进入编辑器，但不在目标位置，因此会表现为“图片一直没有成功插入”。
+
+### 主要更新
+
+- 检测到新增图片块后，即使图片还没有上传完成，也会先移动到目标占位符前。
+- 将自动插图等待时间从 15 秒延长到 30 秒，给币安异步上传更多缓冲时间。
+- 保持原有严格成功判定：只有图片真实加载并位于对应占位符前方，才算插入成功。
+
+### 发布操作记录
+
+- 将 `extension/manifest.json` 版本号从 `1.1.0` 更新为 `1.1.1`。
+- 更新 README，补充 `v1.1.1` 修复说明。
+- 运行本地构建脚本生成 `dist/binance-square-workflow-v1.1.1.zip`。
+- 完成本地校验：
+  - `unzip -t dist/binance-square-workflow-v1.1.1.zip`
+  - `node --check extension/content-x.js`
+  - `node --check extension/content-binance.js`
+  - `node --check extension/popup.js`
+  - `node --check extension/background.js`
+  - `node --check extension/formatter.js`
+  - `python3 -m json.tool extension/manifest.json`
+  - `git diff --check`
+
 ## v1.1.0 — 功能整合版本
 
 发布日期：2026-06-19

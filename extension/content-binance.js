@@ -763,7 +763,7 @@ function markInsertedMedia(media, index) {
   if (media) media.dataset.bsAssetIndex = String(index + 1);
 }
 
-async function waitForNewMedia(editor, snapshot, placeholder, index, timeout = 15000) {
+async function waitForNewMedia(editor, snapshot, placeholder, index, timeout = 30000) {
   const startedAt = Date.now();
   let latest = { addedMedia: [], nearby: [] };
   while (Date.now() - startedAt < timeout) {
@@ -771,6 +771,15 @@ async function waitForNewMedia(editor, snapshot, placeholder, index, timeout = 1
     if (placement.ok) return { ...latest, nearby: [placement.media], placement };
 
     latest = newMediaNearPlaceholder(editor, snapshot, placeholder);
+    const provisionalMedia = latest.addedMedia[latest.addedMedia.length - 1];
+    if (provisionalMedia) {
+      moveMediaBeforePlaceholder(editor, placeholder, provisionalMedia);
+      const provisionalPlacement = validateImagePlacement(editor, index);
+      if (provisionalPlacement.ok) {
+        return { ...latest, nearby: [provisionalPlacement.media], placement: provisionalPlacement };
+      }
+    }
+
     const loadedNearby = latest.nearby.filter(mediaIsLoaded);
     if (loadedNearby.length) {
       moveMediaBeforePlaceholder(editor, placeholder, loadedNearby[0]);

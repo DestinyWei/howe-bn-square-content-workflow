@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "币安广场文章排版工具",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "采集 X Article/推文，转换并填入币安广场文章或短帖草稿。",
   "permissions": ["activeTab", "storage", "downloads", "clipboardRead", "clipboardWrite", "scripting"],
   "host_permissions": [
