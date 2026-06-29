@@ -43,6 +43,10 @@ Release 链接：https://github.com/DestinyWei/howe-bn-square-content-workflow/r
   - `node --check extension/formatter.js`
   - `python3 -m json.tool extension/manifest.json`
   - `git diff --check`
+- 提交并推送：`d0eb7d4 Fix Binance image upload lifecycle handling`。
+- 创建 GitHub Release：`v1.1.2`，标题为“v1.1.2 — 修复临时上传块被提前移动导致插图失败”。
+- 上传 Release 安装包：`dist/binance-square-workflow-v1.1.2.zip`。
+- 确认 Release 链接：https://github.com/DestinyWei/howe-bn-square-content-workflow/releases/tag/v1.1.2
 
 ## v1.1.1 — 修复批量插图落点纠偏
 
