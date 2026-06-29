@@ -456,6 +456,31 @@ function setCaretBefore(element) {
   selection.addRange(range);
 }
 
+function setCaretInside(element) {
+  const editableParent = element.closest("[contenteditable='true'],[role='textbox']");
+  editableParent?.focus();
+  let textNode = [...element.childNodes].find((node) => node.nodeType === Node.TEXT_NODE);
+  if (!textNode) {
+    textNode = document.createTextNode("\u200b");
+    element.append(textNode);
+  }
+  const range = document.createRange();
+  range.setStart(textNode, textNode.nodeValue.length);
+  range.collapse(true);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function createPasteAnchorBeforePlaceholder(editor, placeholder, index) {
+  const anchor = document.createElement("p");
+  anchor.dataset.bsPasteAnchor = String(index + 1);
+  anchor.append(document.createTextNode("\u200b"));
+  placeholder.before(anchor);
+  dispatchInput(editor, "insertParagraph");
+  return anchor;
+}
+
 function currentAssistantEditor() {
   if (!imageAssistantState) return null;
   if (imageAssistantState.editor?.isConnected && isVisible(imageAssistantState.editor)) return imageAssistantState.editor;
@@ -982,8 +1007,12 @@ function blobForPaste(blob, url) {
 }
 
 async function attemptPasteImage(editor, placeholder, blob, dataUrl, index, sourceUrl) {
-  setCaretBefore(placeholder);
+  const anchor = createPasteAnchorBeforePlaceholder(editor, placeholder, index);
+  setCaretInside(anchor);
   try {
+    try {
+      document.execCommand("formatBlock", false, "p");
+    } catch {}
     const mimeType = blob.type || "image/png";
     const extension = mimeType.includes("png") ? "png" : mimeType.includes("webp") ? "webp" : "jpg";
     const file = new File([blob], `bn-square-image-${String(index + 1).padStart(2, "0")}.${extension}`, { type: mimeType });

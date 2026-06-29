@@ -2,6 +2,51 @@
 
 本文件用于记录每次 GitHub Release 的功能说明、发布操作和后续维护备注。
 
+## v1.1.3 — 修复 H2 后续标题导致的插图插入点失败
+
+发布日期：2026-06-29
+
+Release 链接：https://github.com/DestinyWei/howe-bn-square-content-workflow/releases/tag/v1.1.3
+
+安装包：
+
+- `binance-square-workflow-v1.1.3.zip`
+
+### 版本定位
+
+`v1.1.3` 是批量插图助手的 patch 修复版本，用于修复图片占位符下方紧跟 H2 标题时，币安编辑器无法稳定接收图片粘贴的问题。
+
+### 问题原因
+
+这次不是占位符文本识别错误，而是插入光标落点不稳定。旧逻辑会把光标放在 `正文图片 N` 占位符前方的块级边界；当占位符后面紧跟 H2 标题时，币安编辑器可能继承标题段落状态，或者把粘贴动作吞掉。
+
+结果就是自动插图显示 `成功 0/N`，正文里还可能出现空标题、空段落，或者图片被插到占位符下方后又被判定失败。
+
+### 主要更新
+
+- 粘贴图片前，会先在目标占位符上方创建一个临时普通段落锚点。
+- 光标会放入这个锚点内部，再触发图片粘贴，避免落在标题块边界。
+- 粘贴前会尽量切回普通段落，减少继承 H2 标题格式的概率。
+- 保留 `v1.1.2` 的严格成功判定：只有图片真实加载并位于对应占位符上方，才算插入成功。
+- 失败重试和残留清理逻辑继续保留，避免正文被损坏图片块污染。
+
+### 发布操作记录
+
+- 将 `extension/manifest.json` 版本号从 `1.1.2` 更新为 `1.1.3`。
+- 更新 README，补充 `v1.1.3` 修复说明。
+- 运行本地构建脚本生成 `dist/binance-square-workflow-v1.1.3.zip`。
+- 完成本地校验：
+  - `unzip -t dist/binance-square-workflow-v1.1.3.zip`
+  - `node --check extension/content-x.js`
+  - `node --check extension/content-binance.js`
+  - `node --check extension/popup.js`
+  - `node --check extension/background.js`
+  - `node --check extension/formatter.js`
+  - `python3 -m json.tool extension/manifest.json`
+  - `git diff --check`
+- 提交并推送：待补充。
+- 创建 GitHub Release：待补充。
+
 ## v1.1.2 — 修复临时上传块被提前移动导致插图失败
 
 发布日期：2026-06-29
