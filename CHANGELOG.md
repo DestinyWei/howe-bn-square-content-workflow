@@ -42,6 +42,10 @@ Release 链接：https://github.com/DestinyWei/howe-bn-square-content-workflow/r
   - `node --check extension/formatter.js`
   - `python3 -m json.tool extension/manifest.json`
   - `git diff --check`
+- 提交并推送：`8b029c1 Move provisional Binance images before placeholders`。
+- 创建 GitHub Release：`v1.1.1`，标题为“v1.1.1 — 修复批量插图落点纠偏”。
+- 上传 Release 安装包：`dist/binance-square-workflow-v1.1.1.zip`。
+- 确认 Release 链接：https://github.com/DestinyWei/howe-bn-square-content-workflow/releases/tag/v1.1.1
 
 ## v1.1.0 — 功能整合版本
 
