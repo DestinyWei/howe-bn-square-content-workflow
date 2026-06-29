@@ -2,6 +2,48 @@
 
 本文件用于记录每次 GitHub Release 的功能说明、发布操作和后续维护备注。
 
+## v1.1.2 — 修复临时上传块被提前移动导致插图失败
+
+发布日期：2026-06-29
+
+Release 链接：https://github.com/DestinyWei/howe-bn-square-content-workflow/releases/tag/v1.1.2
+
+安装包：
+
+- `binance-square-workflow-v1.1.2.zip`
+
+### 版本定位
+
+`v1.1.2` 是批量插图助手的 patch 修复版本，用于修复 `v1.1.1` 中“提前移动币安临时上传图片块”导致上传生命周期被打断的问题。
+
+### 问题原因
+
+币安编辑器粘贴图片后，会先创建一个临时上传块，再异步上传并替换成最终图片。`v1.1.1` 为了尽早纠偏，把这个临时块在未加载完成时直接移动到 `正文图片 N` 占位符前。
+
+这个 DOM 移动会干扰币安编辑器内部的上传状态，使图片无法完成真实加载。上传失败后，旧清理逻辑只会删除图片节点，没有清理上传组件残留的空标题块，因此页面上会出现多个灰色“标题”，并且批量插图结果变成 `成功 0/N`。
+
+### 主要更新
+
+- 不再移动未加载完成的临时上传块，等待图片真实加载后再移动到对应占位符上方。
+- 保留严格位置校验：只有已加载图片位于对应 `正文图片 N` 占位符前方，才算插入成功。
+- 失败重试时清理本次粘贴新增的空标题块和空编辑块，避免重试后正文被污染。
+- 再次执行自动插图前，会清理当前占位符下方残留的空“标题”块。
+
+### 发布操作记录
+
+- 将 `extension/manifest.json` 版本号从 `1.1.1` 更新为 `1.1.2`。
+- 更新 README，补充 `v1.1.2` 修复说明。
+- 运行本地构建脚本生成 `dist/binance-square-workflow-v1.1.2.zip`。
+- 完成本地校验：
+  - `unzip -t dist/binance-square-workflow-v1.1.2.zip`
+  - `node --check extension/content-x.js`
+  - `node --check extension/content-binance.js`
+  - `node --check extension/popup.js`
+  - `node --check extension/background.js`
+  - `node --check extension/formatter.js`
+  - `python3 -m json.tool extension/manifest.json`
+  - `git diff --check`
+
 ## v1.1.1 — 修复批量插图落点纠偏
 
 发布日期：2026-06-29

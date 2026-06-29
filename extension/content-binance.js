@@ -594,7 +594,12 @@ function captureMediaSnapshot(editor) {
   const nodes = mediaNodes(editor);
   const counts = new Map();
   nodes.forEach((node) => counts.set(mediaKey(node), (counts.get(mediaKey(node)) || 0) + 1));
-  return { count: nodes.length, nodes: new Set(nodes), counts };
+  return {
+    count: nodes.length,
+    nodes: new Set(nodes),
+    counts,
+    topLevelNodes: new Set([...editor.children])
+  };
 }
 
 function newMediaSince(editor, snapshot) {
@@ -653,6 +658,13 @@ function isEmptyEditorBlock(element) {
   if (!element) return false;
   if (normalizedEditorText(element)) return false;
   return !element.querySelector("img,video,canvas,svg,input,textarea,select,button,[contenteditable='false']");
+}
+
+function isGeneratedTitleArtifact(element) {
+  if (!element) return false;
+  if (!/^H[1-6]$/i.test(element.tagName)) return false;
+  if (element.querySelector("img,video,canvas,svg,input,textarea,select,button,[contenteditable='false']")) return false;
+  return /^(标题|Title)$/i.test(normalizedEditorText(element));
 }
 
 function ignorableBetweenMediaAndPlaceholder(element) {
@@ -717,6 +729,25 @@ function mediaBeforePlaceholder(editor, placeholder) {
   return null;
 }
 
+function cleanGeneratedTitleArtifactsAfterPlaceholder(editor, placeholder) {
+  if (!editor || !placeholder) return 0;
+  const topNode = topLevelNode(editor, placeholder);
+  if (!topNode) return 0;
+  const removable = [];
+  let current = topNode.nextElementSibling;
+  let scanned = 0;
+  while (current && scanned < 20) {
+    if (mediaInTopLevelNode(editor, current) || isPlaceholderElement(current)) break;
+    if (!isGeneratedTitleArtifact(current) && !isEmptyEditorBlock(current)) break;
+    removable.push(current);
+    current = current.nextElementSibling;
+    scanned += 1;
+  }
+  removable.forEach((element) => element.remove());
+  if (removable.length) dispatchInput(editor, "deleteContentBackward");
+  return removable.length;
+}
+
 function validateImagePlacement(editor, index) {
   if (!editor) return { ok: false, index, message: "未找到正文编辑器。" };
   const placeholder = findPlaceholder(editor, index + 1);
@@ -771,15 +802,6 @@ async function waitForNewMedia(editor, snapshot, placeholder, index, timeout = 3
     if (placement.ok) return { ...latest, nearby: [placement.media], placement };
 
     latest = newMediaNearPlaceholder(editor, snapshot, placeholder);
-    const provisionalMedia = latest.addedMedia[latest.addedMedia.length - 1];
-    if (provisionalMedia) {
-      moveMediaBeforePlaceholder(editor, placeholder, provisionalMedia);
-      const provisionalPlacement = validateImagePlacement(editor, index);
-      if (provisionalPlacement.ok) {
-        return { ...latest, nearby: [provisionalPlacement.media], placement: provisionalPlacement };
-      }
-    }
-
     const loadedNearby = latest.nearby.filter(mediaIsLoaded);
     if (loadedNearby.length) {
       moveMediaBeforePlaceholder(editor, placeholder, loadedNearby[0]);
@@ -820,6 +842,19 @@ function removeMediaAddedSince(editor, snapshot) {
   removable.forEach((media) => media.remove());
   if (removable.size) dispatchInput(editor, "deleteContentBackward");
   return removable.size;
+}
+
+function removePasteArtifactsAddedSince(editor, snapshot) {
+  if (!editor || !snapshot?.topLevelNodes) return 0;
+  const removable = [...editor.children].filter((element) =>
+    !snapshot.topLevelNodes.has(element) &&
+    !isPlaceholderElement(element) &&
+    !mediaInTopLevelNode(editor, element) &&
+    (isGeneratedTitleArtifact(element) || isEmptyEditorBlock(element))
+  );
+  removable.forEach((element) => element.remove());
+  if (removable.length) dispatchInput(editor, "deleteContentBackward");
+  return removable.length;
 }
 
 function topLevelIndex(editor, node) {
@@ -982,10 +1017,12 @@ async function insertAssistantImageAtPlaceholder(index) {
   const sourceUrl = assetUrl(imageAssistantState.draft.assets[index]);
   const blob = blobForPaste(await fetchAssistantAssetBlob(sourceUrl), sourceUrl);
   const dataUrl = await blobToDataUrl(blob);
+  cleanGeneratedTitleArtifactsAfterPlaceholder(editor, placeholder);
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const snapshot = captureMediaSnapshot(editor);
     let freshPlaceholder = removeDuplicatePlaceholders(editor, index + 1) || placeholder;
+    cleanGeneratedTitleArtifactsAfterPlaceholder(editor, freshPlaceholder);
     await attemptPasteImage(editor, freshPlaceholder, blob, dataUrl, index, sourceUrl);
     const verified = await waitForNewMedia(editor, snapshot, freshPlaceholder, index);
     if (verified.placement?.ok) {
@@ -1009,6 +1046,8 @@ async function insertAssistantImageAtPlaceholder(index) {
     }
 
     removeMediaAddedSince(editor, snapshot);
+    removePasteArtifactsAddedSince(editor, snapshot);
+    cleanGeneratedTitleArtifactsAfterPlaceholder(editor, freshPlaceholder);
     removeDuplicatePlaceholders(editor, index + 1);
     await sleep(350);
   }
